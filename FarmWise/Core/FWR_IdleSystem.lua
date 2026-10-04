@@ -25,21 +25,6 @@ local function getCurrentZoneInfo()
     return zone or "", subzone
 end
 
-local function buildBaseContextKey(self, zone, subzone)
-    zone = normalizeText(zone) or ""
-    subzone = normalizeText(subzone)
-    if zone == "" then
-        return ""
-    end
-
-    local useSubZone = self and self.IsSubZoneDataEnabled and self:IsSubZoneDataEnabled() or false
-    if useSubZone and subzone and subzone ~= "" then
-        return zone .. "::" .. subzone
-    end
-
-    return zone
-end
-
 local function getTimeDisplayFormatConfig()
     local elements = FWR.UI_CONFIG and FWR.UI_CONFIG.MainFrame and FWR.UI_CONFIG.MainFrame.elements or nil
     local cfg = elements and elements.timeDisplayFormat or nil
@@ -94,20 +79,6 @@ local function normalizeTriggerOwner(owner)
     end
 
     return nil
-end
-
-local function resolveIdleContextFields(state, zone, subzone)
-    zone = normalizeText(zone) or ""
-    subzone = normalizeText(subzone)
-
-    if state and state.activeTriggerOwner and isGatherOwner(state.activeTriggerOwner) then
-        if state.activeTriggerOwner == "skinning" then
-            return zone, subzone
-        end
-        return zone, nil
-    end
-
-    return zone, subzone
 end
 
 local function clearGatherTriggerState(state)
@@ -333,10 +304,9 @@ end
 
 function FWR:EnsureIdleContext(zone, subzone)
     local state = self:EnsureIdleSystemState()
-    zone, subzone = resolveIdleContextFields(state, zone, subzone)
-    local baseContextKey = buildBaseContextKey(self, zone, subzone)
-    local characterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-    local key = self.BuildCharacterScopedContextKey and self:BuildCharacterScopedContextKey(baseContextKey, characterKey) or baseContextKey
+    zone = normalizeText(zone) or ""
+    subzone = normalizeText(subzone)
+    local key = self:BuildDetailedContextKey(zone, subzone)
     if key == "" then
         return nil, key
     end
@@ -361,11 +331,8 @@ function FWR:RefreshIdleZoneInfo()
     self:ApplyIdleElapsed(now)
 
     local state = self:RefreshIdleTriggerState(now)
-    local rawZone, rawSubzone = getCurrentZoneInfo()
-    local zone, subzone = resolveIdleContextFields(state, rawZone, rawSubzone)
-    local baseContextKey = buildBaseContextKey(self, zone, subzone)
-    local characterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-    local nextKey = self.BuildCharacterScopedContextKey and self:BuildCharacterScopedContextKey(baseContextKey, characterKey) or baseContextKey
+    local zone, subzone = getCurrentZoneInfo()
+    local nextKey = self:BuildDetailedContextKey(zone, subzone)
     local previousKey = state.current and state.current.key or ""
     local previousZone = state.current and state.current.zone or ""
 
@@ -489,18 +456,17 @@ function FWR:GetLiveSubzoneText()
 end
 
 function FWR:GetIdleCurrentTotalSeconds()
-    local context = self:GetIdleCurrentContext()
-    return context and (context.totalSeconds or 0) or 0
+    return (self:SumViewScopeSeconds())
 end
 
 function FWR:GetLiveTotalTimeValueText()
-    local context = self:GetIdleCurrentContext()
-    return formatClock(context and context.totalSeconds or 0)
+    local totalSeconds = self:SumViewScopeSeconds()
+    return formatClock(totalSeconds)
 end
 
 function FWR:GetLiveSessionTimeValueText()
-    local context = self:GetIdleCurrentContext()
-    return formatClock(context and context.sessionSeconds or 0)
+    local _, sessionSeconds = self:SumViewScopeSeconds()
+    return formatClock(sessionSeconds)
 end
 
 function FWR:GetIdleIndicatorText()

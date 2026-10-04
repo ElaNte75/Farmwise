@@ -73,22 +73,6 @@ local function formatMoneyShort(copper)
     return string.format("%d%s", copperOnly, COPPER_ICON)
 end
 
-local function buildBaseContextKey(self, zoneName, subZoneName)
-    zoneName = normalizeText(zoneName) or ""
-    subZoneName = normalizeText(subZoneName)
-
-    if zoneName == "" then
-        return ""
-    end
-
-    local useSubZone = self and self.IsSubZoneDataEnabled and self:IsSubZoneDataEnabled() or false
-    if useSubZone and subZoneName and subZoneName ~= "" then
-        return zoneName .. "::" .. subZoneName
-    end
-
-    return zoneName
-end
-
 local function getCurrentGoldContextInfo(self)
     local idleState = self.EnsureIdleSystemState and self:EnsureIdleSystemState() or nil
     local current = idleState and idleState.current or nil
@@ -98,9 +82,7 @@ local function getCurrentGoldContextInfo(self)
     local contextKey = normalizeText(current and current.key)
 
     if not contextKey and zoneName then
-        local baseContextKey = buildBaseContextKey(self, zoneName, subZoneName)
-        local characterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-        contextKey = self.BuildCharacterScopedContextKey and self:BuildCharacterScopedContextKey(baseContextKey, characterKey) or baseContextKey
+        contextKey = self:BuildDetailedContextKey(zoneName, subZoneName)
     end
 
     return contextKey or "__global", zoneName, subZoneName
@@ -192,32 +174,21 @@ function FWR:EnsureGoldContext(contextKey, zoneName, subZoneName)
     return ensureGoldContextBucket(ledger, contextKey, zoneName, subZoneName)
 end
 
-function FWR:GetGoldContextSummary(contextKey)
-    local resolvedContextKey = contextKey
-    local zoneName = nil
-    local subZoneName = nil
-
-    if type(resolvedContextKey) ~= "string" or resolvedContextKey == "" then
-        resolvedContextKey, zoneName, subZoneName = getCurrentGoldContextInfo(self)
-    end
-
-    local context = self:EnsureGoldContext(resolvedContextKey, zoneName, subZoneName)
-    local totalCopper = tonumber(context.rawLootCopperTotal) or 0
-    local idleState = self.EnsureIdleSystemState and self:EnsureIdleSystemState() or nil
-    local idleContext = idleState and idleState.timersByContext and idleState.timersByContext[resolvedContextKey] or nil
-    local totalSeconds = tonumber(idleContext and idleContext.totalSeconds) or 0
+-- Looted money and estimated gold per hour for what the main window currently shows.
+function FWR:GetGoldContextSummary()
+    local scope = self:GetViewScope()
+    local totalCopper, sessionCopper = self:SumViewScopeGold(scope)
+    local totalSeconds = self:SumViewScopeSeconds(scope)
     local estimatedCopperPerHour = 0
 
-    if tonumber(totalSeconds) and totalSeconds > 0 then
+    if totalSeconds > 0 then
         estimatedCopperPerHour = (totalCopper * 3600) / totalSeconds
     end
 
     return {
-        contextKey = resolvedContextKey,
-        zoneName = context.zoneName,
-        subZoneName = context.subZoneName,
         totalCopper = totalCopper,
-        totalSeconds = tonumber(totalSeconds) or 0,
+        sessionCopper = sessionCopper,
+        totalSeconds = totalSeconds,
         estimatedCopperPerHour = estimatedCopperPerHour,
     }
 end

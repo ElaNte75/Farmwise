@@ -692,7 +692,7 @@ function FWR:RefreshMainWindowText()
 
     local elements = self.UI_CONFIG and self.UI_CONFIG.MainFrame and self.UI_CONFIG.MainFrame.elements or {}
     local zoneText = self.GetLiveZoneText and self:GetLiveZoneText() or ((elements.zone and elements.zone.text) or "Zone Placeholder")
-    local subzoneText = self.GetLiveSubzoneText and self:GetLiveSubzoneText() or ""
+    local subzoneText = (self.IsSubZoneDataEnabled and self:IsSubZoneDataEnabled() and self.GetLiveSubzoneText and self:GetLiveSubzoneText()) or ""
     local hasSubzone = type(subzoneText) == "string" and subzoneText ~= ""
     local totalTimeValueText = self.GetLiveTotalTimeValueText and self:GetLiveTotalTimeValueText() or "00:00"
     local sessionTimeValueText = self.GetLiveSessionTimeValueText and self:GetLiveSessionTimeValueText() or "00:00"

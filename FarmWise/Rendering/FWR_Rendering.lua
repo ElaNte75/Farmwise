@@ -880,32 +880,6 @@ local function shouldHideEntryFromDisplayFilters(self, entry)
     return hideEntry
 end
 
-local function isCombinedAllDataModeEnabled(self)
-    return self and self.IsCombinedAllDataEnabled and self:IsCombinedAllDataEnabled() or false
-end
-
-local function isCombinedCharacterAllZonesModeEnabled(self)
-    return self and self.IsCombinedCharacterAllZonesEnabled and self:IsCombinedCharacterAllZonesEnabled() or false
-end
-
-local function getCurrentSessionQuantityByCombinedKey(self)
-    local map = {}
-    local state = ensureState(self)
-    if type(state) ~= "table" or type(state.order) ~= "table" or type(state.byKey) ~= "table" then
-        return map
-    end
-
-    for _, key in ipairs(state.order) do
-        local entry = state.byKey[key]
-        if type(entry) == "table" then
-            local combinedKey = buildEntryKey(entry.itemName, entry.itemQuality, entry.itemLink)
-            map[combinedKey] = tonumber(entry.quantityCount) or 0
-        end
-    end
-
-    return map
-end
-
 local function mergeObservedSources(target, source)
     local order = type(source) == "table" and source.observedSourceOrder or nil
     if type(order) ~= "table" then
@@ -932,26 +906,25 @@ local function mergeAggregateField(target, fieldName, incomingValue, multipleLab
     end
 end
 
-local function buildCombinedDisplayEntries(self, restrictCharacterKey)
+-- Merges every stored basket that belongs to the view scope into one list of rows.
+-- requireSession: only rows with items gathered this session (zone / sub-zone views).
+local function buildScopedDisplayEntries(self, scope, requireSession)
     local renderState = self and self.DB and self.DB.renderState or nil
     local basketsByContext = renderState and renderState.displayBasketByContext or nil
     if type(basketsByContext) ~= "table" then
         return {}
     end
 
-    local currentSessionQuantity = getCurrentSessionQuantityByCombinedKey(self)
     local combinedByKey = {}
     local combinedOrder = {}
 
-    for _, basket in pairs(basketsByContext) do
+    for contextKey, basket in pairs(basketsByContext) do
         local order = type(basket) == "table" and basket.order or nil
         local byKey = type(basket) == "table" and basket.byKey or nil
-        if type(order) == "table" and type(byKey) == "table" then
+        if type(order) == "table" and type(byKey) == "table" and self:ContextMatchesViewScope(contextKey, scope) then
             for _, entryKey in ipairs(order) do
                 local entry = byKey[entryKey]
-                if type(entry) == "table" and (tonumber(entry.totalCount) or 0) > 0
-                    and (type(restrictCharacterKey) ~= "string" or restrictCharacterKey == "" or entryMatchesCharacter(self, entry, restrictCharacterKey))
-                then
+                if type(entry) == "table" and (tonumber(entry.totalCount) or 0) > 0 then
                     local combinedKey = buildEntryKey(entry.itemName, entry.itemQuality, entry.itemLink)
                     local aggregate = combinedByKey[combinedKey]
                     if not aggregate then
@@ -987,7 +960,7 @@ local function buildCombinedDisplayEntries(self, restrictCharacterKey)
                             isDynamicSharedReagent = entry.isDynamicSharedReagent == true,
                             observedSourceOrder = {},
                             observedSourceSet = {},
-                            quantityCount = tonumber(currentSessionQuantity[combinedKey]) or 0,
+                            quantityCount = 0,
                             totalCount = 0,
                         }
                         combinedByKey[combinedKey] = aggregate
@@ -995,6 +968,7 @@ local function buildCombinedDisplayEntries(self, restrictCharacterKey)
                     end
 
                     aggregate.totalCount = (tonumber(aggregate.totalCount) or 0) + (tonumber(entry.totalCount) or 0)
+                    aggregate.quantityCount = (tonumber(aggregate.quantityCount) or 0) + (tonumber(entry.quantityCount) or 0)
                     aggregate.itemRarity = tonumber(entry.itemRarity) or aggregate.itemRarity
                     aggregate.itemID = entry.itemID or aggregate.itemID
                     aggregate.itemLink = entry.itemLink or aggregate.itemLink
@@ -1028,7 +1002,9 @@ local function buildCombinedDisplayEntries(self, restrictCharacterKey)
     local entries = {}
     for _, combinedKey in ipairs(combinedOrder) do
         local entry = combinedByKey[combinedKey]
-        if entry and not shouldHideEntryFromDisplayFilters(self, entry) and (tonumber(entry.totalCount) or 0) > 0 then
+        local hasCount = requireSession and (tonumber(entry.quantityCount) or 0) > 0
+            or (not requireSession and (tonumber(entry.totalCount) or 0) > 0)
+        if entry and hasCount and not shouldHideEntryFromDisplayFilters(self, entry) then
             applyDynamicSharedReagentState(entry)
             table.insert(entries, entry)
         end
@@ -1061,119 +1037,14 @@ local function sortDisplayedEntries(entries)
     end)
 end
 
-local function contextKeyMatchesCharacter(contextKey, characterKey)
-    local keyText = type(contextKey) == "string" and contextKey or ""
-    local expectedCharacterKey = type(characterKey) == "string" and characterKey or ""
-    if keyText == "" or expectedCharacterKey == "" then
-        return false
-    end
-
-    local scopedCharacterKey = keyText:match("##(.+)$")
-    if scopedCharacterKey and scopedCharacterKey ~= "" then
-        return scopedCharacterKey == expectedCharacterKey
-    end
-
-    local characterOnlyKey = keyText:match("^character::(.+)$")
-    if characterOnlyKey and characterOnlyKey ~= "" then
-        return characterOnlyKey == expectedCharacterKey
-    end
-
-    return false
-end
-
-local function getCombinedAllDataElapsedSeconds(self, restrictCharacterKey)
-    local idleState = self and self.EnsureIdleSystemState and self:EnsureIdleSystemState() or nil
-    local timersByContext = idleState and idleState.timersByContext or nil
-    if type(timersByContext) ~= "table" then
-        return 0
-    end
-
-    local totalSeconds = 0
-    for contextKey, context in pairs(timersByContext) do
-        local includeContext = true
-        if type(restrictCharacterKey) == "string" and restrictCharacterKey ~= "" then
-            includeContext = contextKeyMatchesCharacter(contextKey, restrictCharacterKey)
-        end
-        if includeContext then
-            totalSeconds = totalSeconds + math.max(0, tonumber(type(context) == "table" and context.totalSeconds) or 0)
-        end
-    end
-    return totalSeconds
-end
-
 local function getDisplayElapsedSeconds(self)
-    if isCombinedAllDataModeEnabled(self) then
-        return getCombinedAllDataElapsedSeconds(self)
-    end
-    if isCombinedCharacterAllZonesModeEnabled(self) then
-        local currentCharacterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-        return getCombinedAllDataElapsedSeconds(self, currentCharacterKey)
-    end
-    return (self and self.GetIdleCurrentTotalSeconds and self:GetIdleCurrentTotalSeconds()) or 0
-end
-
-local function collectVisibleEntriesFromBasket(self, basket, currentCharacterKey, subZoneFilter, includeTotalFallback)
-    local entries = {}
-    if type(basket) ~= "table" or type(basket.order) ~= "table" or type(basket.byKey) ~= "table" then
-        return entries
-    end
-
-    local expectedSubZone = normalizeDisplayText(subZoneFilter)
-    for _, key in ipairs(basket.order) do
-        local entry = basket.byKey[key]
-        local quantityCount = tonumber(entry and entry.quantityCount) or 0
-        local totalCount = tonumber(entry and entry.totalCount) or 0
-        local includeEntry = entry
-            and not shouldHideEntryFromDisplayFilters(self, entry)
-            and entryMatchesCharacter(self, entry, currentCharacterKey)
-            and (quantityCount > 0 or (includeTotalFallback == true and totalCount > 0))
-
-        if includeEntry and expectedSubZone then
-            local entrySubZone = normalizeDisplayText(getEntrySubZoneLabel(entry))
-            includeEntry = entrySubZone == expectedSubZone
-        end
-
-        if includeEntry then
-            table.insert(entries, entry)
-        end
-    end
-
-    return entries
+    return (self:SumViewScopeSeconds())
 end
 
 local function getDisplayedEntries(self)
-    if isCombinedAllDataModeEnabled(self) then
-        local entries = buildCombinedDisplayEntries(self)
-        sortDisplayedEntries(entries)
-        return entries
-    end
-    if isCombinedCharacterAllZonesModeEnabled(self) then
-        local currentCharacterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-        local entries = buildCombinedDisplayEntries(self, currentCharacterKey)
-        sortDisplayedEntries(entries)
-        return entries
-    end
-
-    local state = ensureState(self)
-    local currentCharacterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-    local entries = collectVisibleEntriesFromBasket(self, state, currentCharacterKey)
-
-    if #entries == 0 and self.IsSubZoneDataEnabled and self:IsSubZoneDataEnabled() then
-        local currentZone = normalizeDisplayText(self.GetLiveZoneText and self:GetLiveZoneText() or nil)
-        local currentSubZone = normalizeDisplayText(self.GetLiveSubzoneText and self:GetLiveSubzoneText() or nil)
-        local renderState = self and self.DB and self.DB.renderState or nil
-        local basketsByContext = renderState and renderState.displayBasketByContext or nil
-
-        if currentZone and currentSubZone and type(basketsByContext) == "table" then
-            local zoneContextKey = currentZone
-            if self.BuildCharacterScopedContextKey then
-                zoneContextKey = self:BuildCharacterScopedContextKey(zoneContextKey, currentCharacterKey)
-            end
-
-            entries = collectVisibleEntriesFromBasket(self, basketsByContext[zoneContextKey], currentCharacterKey, currentSubZone, true)
-        end
-    end
-
+    local scope = self:GetViewScope()
+    local requireSession = scope.mode == "zone" or scope.mode == "subzone"
+    local entries = buildScopedDisplayEntries(self, scope, requireSession)
     sortDisplayedEntries(entries)
     return entries
 end
@@ -2361,6 +2232,8 @@ function FWR:AddToDisplayBasket(classifiedEntry, quantity)
     if amount < 1 then
         amount = 1
     end
+
+    self:ApplyContextZoneFields(classifiedEntry)
 
     local itemName = classifiedEntry.itemName
     local itemQuality = classifiedEntry.itemQuality

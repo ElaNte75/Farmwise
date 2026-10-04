@@ -3,34 +3,6 @@ FarmWiseReforged = FWR
 
 local frame = CreateFrame("Frame")
 FWR.EventFrame = frame
-local function normalizeResetText(value)
-    if type(value) ~= "string" then
-        return nil
-    end
-    value = value:gsub("^%s+", ""):gsub("%s+$", "")
-    if value == "" then
-        return nil
-    end
-    return value
-end
-
-local function getResetScopeInfo(self)
-    local zoneName = normalizeResetText(self and self.GetLiveZoneText and self:GetLiveZoneText() or nil)
-        or normalizeResetText(type(GetRealZoneText) == "function" and GetRealZoneText() or nil)
-        or normalizeResetText(type(GetZoneText) == "function" and GetZoneText() or nil)
-        or ""
-    local subZoneName = normalizeResetText(self and self.GetLiveSubzoneText and self:GetLiveSubzoneText() or nil)
-    local useSubZone = self and self.IsSubZoneDataEnabled and self:IsSubZoneDataEnabled() or false
-    local baseContextKey = zoneName
-    if useSubZone and subZoneName and subZoneName ~= "" then
-        baseContextKey = zoneName .. "::" .. subZoneName
-    end
-    local characterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-    local contextKey = self.BuildCharacterScopedContextKey and self:BuildCharacterScopedContextKey(baseContextKey, characterKey) or baseContextKey
-    return contextKey, zoneName, useSubZone and subZoneName or nil
-end
-
-
 local function printStatus()
     local status = FWR:GetAdvisorStatus()
     print(string.format(
@@ -74,56 +46,14 @@ local function handleAddonLoaded(addonName)
     FWR:RegisterOptionsCategory()
 end
 
-function FWR:ResetSessionForScope(scope)
-    local contextKey, zoneName, subZoneName = getResetScopeInfo(self)
-    if type(contextKey) ~= "string" or contextKey == "" then
-        return nil
-    end
-
-    if self.DB and self.DB.idleSystem and type(self.DB.idleSystem.timersByContext) == "table" then
-        local timerContext = self.DB.idleSystem.timersByContext[contextKey]
-        if type(timerContext) == "table" then
-            timerContext.sessionSeconds = 0
-        end
-    end
-
-    if self.DB and self.DB.goldLedger and type(self.DB.goldLedger.byContextKey) == "table" then
-        local goldContext = self.DB.goldLedger.byContextKey[contextKey]
-        if type(goldContext) == "table" then
-            goldContext.rawLootCopperSession = 0
-            goldContext.updatedAt = self:Now()
-        end
-    end
-
-    if self.DB and self.DB.renderState and type(self.DB.renderState.displayBasketByContext) == "table" then
-        local basket = self.DB.renderState.displayBasketByContext[contextKey]
-        local currentCharacterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-        if type(basket) == "table" and type(basket.byKey) == "table" then
-            for _, entry in pairs(basket.byKey) do
-                local entryCharacterKey = entry and entry.characterKey or nil
-                if currentCharacterKey == "" or entryCharacterKey == currentCharacterKey then
-                    entry.quantityCount = 0
-                end
-            end
-        end
-    end
-
-    if self.TouchDatabase then
-        self:TouchDatabase()
-    end
-    if self.RefreshMainWindowText then
-        self:RefreshMainWindowText()
-    end
-    if self.RefreshDisplayLiveMetrics then
-        self:RefreshDisplayLiveMetrics(true)
-    end
-
-    print("|cffd7be6aFarmWise Reforged|r current zone reset: " .. (subZoneName or zoneName) .. ".")
-    return contextKey, zoneName, subZoneName
+function FWR:ResetSessionForScope()
+    local scope = self:GetViewScope()
+    self:ResetSessionsInScope(scope)
+    print("|cffd7be6aFarmWise|r session reset: " .. self:GetViewScopeLabel(scope) .. ".")
 end
 
 function FWR:ResetCurrentSessionView()
-    return self:ResetSessionForScope("zone")
+    return self:ResetSessionForScope()
 end
 
 local function handlePlayerLogin()

@@ -1083,6 +1083,7 @@ local function createRootSettingsFrame()
     frame.name = SETTINGS_CATEGORY_NAME
     frame:SetSize(FRAME_CONFIG.width or 900, FRAME_CONFIG.height or 560)
     initializeInternalLayout(frame)
+    frame:Hide()
     return frame
 end
 
@@ -1122,7 +1123,6 @@ local function collectManagedControlPanels(self)
     end
 
     add(self and self.ControlPanel, "customControlPanel")
-    add(self and self.OptionsPanel, "optionsPanel")
     add(_G and _G.SettingsPanel, "settingsPanel")
     add(_G and _G.InterfaceOptionsFrame, "interfaceOptionsFrame")
 
@@ -1209,7 +1209,7 @@ function FWR:ApplySettingsVisibilityRules(forceRefresh)
             if isPanelOpen(panel) then
                 self.__fwrHiddenControlPanelsByCombat[key] = true
 
-                if key == "optionsPanel" or key == "settingsPanel" or key == "interfaceOptionsFrame" then
+                if key == "settingsPanel" or key == "interfaceOptionsFrame" then
                     self.__fwrShouldRestoreOptionsCategory = true
                     self.__fwrLastOptionsSectionKey = self.__fwrLastOptionsSectionKey
                         or (self.OptionsPanel and self.OptionsPanel.SelectedSectionKey)
@@ -1225,14 +1225,13 @@ function FWR:ApplySettingsVisibilityRules(forceRefresh)
     elseif not inCombat then
         if ui.restoreControlPanelsAfterCombat == true then
             local shouldRestoreOptionsCategory = self.__fwrShouldRestoreOptionsCategory == true and (
-                self.__fwrHiddenControlPanelsByCombat.optionsPanel == true
-                or self.__fwrHiddenControlPanelsByCombat.settingsPanel == true
+                self.__fwrHiddenControlPanelsByCombat.settingsPanel == true
                 or self.__fwrHiddenControlPanelsByCombat.interfaceOptionsFrame == true
             )
 
             for key, wasHidden in pairs(self.__fwrHiddenControlPanelsByCombat) do
                 if wasHidden == true then
-                    if key ~= "optionsPanel" and key ~= "settingsPanel" and key ~= "interfaceOptionsFrame" then
+                    if key ~= "settingsPanel" and key ~= "interfaceOptionsFrame" then
                         local panel = managedPanels[key]
                         if panel and type(panel.Show) == "function" and not panel:IsShown() then
                             panel:Show()

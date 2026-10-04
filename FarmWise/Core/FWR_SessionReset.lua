@@ -18,21 +18,23 @@ local function forEachTable(root, callback)
     end
 end
 
-function FWR:ResetAllSessions()
+function FWR:ResetSessionsInScope(scope)
     local db = self.DB
     if type(db) ~= "table" then
         return
     end
 
-    forEachTable(db.idleSystem and db.idleSystem.timersByContext, function(timer)
+    scope = scope or { mode = "all" }
+
+    self:ForEachInViewScope(db.idleSystem and db.idleSystem.timersByContext, scope, function(_, timer)
         timer.sessionSeconds = 0
     end)
 
-    forEachTable(db.goldLedger and db.goldLedger.byContextKey, function(bucket)
+    self:ForEachInViewScope(db.goldLedger and db.goldLedger.byContextKey, scope, function(_, bucket)
         bucket.rawLootCopperSession = 0
     end)
 
-    forEachTable(db.renderState and db.renderState.displayBasketByContext, function(basket)
+    self:ForEachInViewScope(db.renderState and db.renderState.displayBasketByContext, scope, function(_, basket)
         forEachTable(basket.byKey, function(entry)
             entry.quantityCount = 0
         end)
@@ -47,6 +49,10 @@ function FWR:ResetAllSessions()
     if self.RefreshDisplayLiveMetrics then
         self:RefreshDisplayLiveMetrics(true)
     end
+end
+
+function FWR:ResetAllSessions()
+    self:ResetSessionsInScope({ mode = "all" })
 end
 
 local function getScheduledTimestamp(minutesOfDay, nowTimestamp)

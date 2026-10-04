@@ -14,6 +14,7 @@ Core/FWR_AuctionSync.lua
 Core/FWR_RarityFilter.lua
 Core/FWR_SessionReset.lua
 Core/FWR_CharacterScope.lua
+Core/FWR_ViewScope.lua
 Core/FWR_IdleSystem.lua
 Core/FWR_IdleCombatTrigger.lua
 Core/FWR_GoldLedger.lua
