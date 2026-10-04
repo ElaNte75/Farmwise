@@ -7,22 +7,28 @@ FarmWiseReforged = FWR
 --
 --   FarmWiseDB["Zone - SubZone"] = {
 --       items = { ["itemID|Qn"] = { id, name, count, quality, itemQuality, exp, prof } },
---       gold = copper, time = seconds,
---       daily = { date, items = { key = count }, gold, time },
+--       gold = copper looted, vendor = copper of vendor value looted, time = seconds,
+--       daily = { date, items = { key = count }, gold, vendor, time },
 --       zone = "Zone", subzone = "SubZone",   -- added by this version, absent in old entries
 --   }
---   FarmWiseDB._ah       = Auctionator price snapshot (same shape as before)
+--   FarmWiseDB._ah       = Auction House price snapshot (same shape as before)
 --   FarmWiseDB._settings = old FarmWise settings (left untouched)
 --   FarmWiseDB._advisor  = Advisor preferences (this version)
 --
 -- Every key starting with "_" is metadata and is never treated as a zone.
+-- Results are always per zone + sub-zone: the Advisor says exactly where to go.
 
+-- A result needs this much farming time in one place before it is shown, and the time
+-- decides how sure FarmWise is about it.
 FWR.ADVISOR_MIN_SECONDS = 15 * 60
+local CONFIDENCE_HIGH_SECONDS = 60 * 60
+
+-- The Auction House keeps 5% of every sale.
+local AUCTION_HOUSE_CUT = 0.05
 
 local DEFAULT_ADVISOR_SETTINGS = {
-    aggregate = "zone",            -- "zone" or "subzone"
     currentExpansionOnly = true,   -- ignore items older than the current expansion
-    professionFilter = true,       -- only show categories matching the character's professions
+    includeQuality = false,        -- item search: false adds up every quality of the item
 }
 
 -- Profession skill line IDs.
@@ -31,6 +37,22 @@ local SKILL_SKINNING = 393
 local SKILL_MINING = 186
 local SKILL_HERBALISM = 182
 local SKILL_FISHING = 356
+
+local PROFESSION_KEYS = {
+    herbalism = SKILL_HERBALISM,
+    mining = SKILL_MINING,
+    skinning = SKILL_SKINNING,
+    tailoring = SKILL_TAILORING,
+    fishing = SKILL_FISHING,
+}
+
+local PROFESSION_NAMES = {
+    [SKILL_TAILORING] = "Tailoring",
+    [SKILL_SKINNING] = "Skinning",
+    [SKILL_MINING] = "Mining",
+    [SKILL_HERBALISM] = "Herbalism",
+    [SKILL_FISHING] = "Fishing",
+}
 
 -- Trade goods (item class 7) subclass -> professions that can obtain it.
 local SUBCLASS_PROFESSIONS = {
@@ -90,6 +112,11 @@ function FWR:EnsureAdvisorStore()
         end
     end
 
+    -- options and data of earlier builds that no longer exist
+    settings.aggregate = nil
+    settings.professionFilter = nil
+    FarmWiseDB._guideIds = nil
+
     return FarmWiseDB, settings
 end
 
@@ -108,13 +135,15 @@ local function ensureZoneData(zoneKey, zone, subzone)
 
     data.items = data.items or {}
     data.gold = tonumber(data.gold) or 0
+    data.vendor = tonumber(data.vendor) or 0
     data.time = tonumber(data.time) or 0
     data.daily = data.daily or {}
     if data.daily.date ~= getTodayKey() then
-        data.daily = { date = getTodayKey(), items = {}, gold = 0, time = 0 }
+        data.daily = { date = getTodayKey(), items = {}, gold = 0, vendor = 0, time = 0 }
     end
     data.daily.items = data.daily.items or {}
     data.daily.gold = tonumber(data.daily.gold) or 0
+    data.daily.vendor = tonumber(data.daily.vendor) or 0
     data.daily.time = tonumber(data.daily.time) or 0
 
     if zone and not data.zone then
@@ -220,15 +249,45 @@ function FWR:RecordAdvisorGold(copper)
     data.daily.gold = data.daily.gold + copper
 end
 
+-- Vendor value of looted items that are not trade materials. The zone is the one the item
+-- was looted in, which can differ from the live one when item data arrives late.
+function FWR:RecordAdvisorVendor(copper, zone, subzone)
+    copper = tonumber(copper) or 0
+    if copper <= 0 then
+        return
+    end
+
+    if not zone or zone == "" then
+        zone, subzone = getLiveZone()
+    end
+    local data = ensureZoneData(buildZoneKey(zone, subzone or ""), zone, subzone or "")
+    data.vendor = data.vendor + copper
+    data.daily.vendor = data.daily.vendor + copper
+end
+
 ------------------------------------------------------------
 -- Item classification helpers
 ------------------------------------------------------------
 
+-- The content expansion of the game right now (not the expansions the account owns).
 local function getCurrentExpansion()
+    if type(GetServerExpansionLevel) == "function" then
+        return tonumber(GetServerExpansionLevel())
+    end
     if type(GetExpansionLevel) == "function" then
         return tonumber(GetExpansionLevel())
     end
     return nil
+end
+
+-- Item data is asked for once per item and session; asking again only repeats the answer.
+local requestedItemData = {}
+
+local function requestItemData(itemID)
+    if not requestedItemData[itemID] and C_Item and C_Item.RequestLoadItemDataByID then
+        requestedItemData[itemID] = true
+        C_Item.RequestLoadItemDataByID(itemID)
+    end
 end
 
 local function resolveItemExpansion(info)
@@ -243,9 +302,7 @@ local function resolveItemExpansion(info)
 
     local expansion = select(15, GetItemInfo(itemID))
     if expansion == nil then
-        if C_Item and C_Item.RequestLoadItemDataByID then
-            C_Item.RequestLoadItemDataByID(itemID)
-        end
+        requestItemData(itemID)
         return nil
     end
 
@@ -272,24 +329,22 @@ local function getKnownProfessionSkillLines()
     return known
 end
 
-local function itemMatchesProfessions(info, known)
-    if not known then
-        return true
-    end
-
-    local itemID = tonumber(info.id)
+local function professionsForItem(itemID)
     if not itemID or type(GetItemInfoInstant) ~= "function" then
-        return true
+        return nil
     end
 
     local _, _, _, _, _, classID, subClassID = GetItemInfoInstant(itemID)
     if classID ~= 7 then
-        return true
+        return nil
     end
+    return SUBCLASS_PROFESSIONS[subClassID]
+end
 
-    local professions = SUBCLASS_PROFESSIONS[subClassID]
-    if not professions then
-        return true -- elementals, enchanting and other categories are always shown
+local function characterCanObtain(itemID, known)
+    local professions = professionsForItem(itemID)
+    if not professions or not known then
+        return true -- elementals, enchanting and other categories, or professions unknown
     end
 
     for _, skillLine in ipairs(professions) do
@@ -300,41 +355,50 @@ local function itemMatchesProfessions(info, known)
     return false
 end
 
-local function zoneOfKey(key, data)
-    if type(data) == "table" and type(data.zone) == "string" and data.zone ~= "" then
-        return data.zone
+-- Text explaining why this character cannot obtain the item, or nil when it can.
+function FWR:GetAdvisorItemRestriction(itemID)
+    local known = getKnownProfessionSkillLines()
+    if characterCanObtain(itemID, known) then
+        return nil
     end
-    local zone = key:match("^(.-) %- ")
-    return zone or key
+
+    local names = {}
+    for _, skillLine in ipairs(professionsForItem(itemID)) do
+        names[#names + 1] = PROFESSION_NAMES[skillLine]
+    end
+    return "This character cannot gather this item (needs " .. table.concat(names, " or ") .. ")."
+end
+
+-- Confidence of a result from the farming time behind it.
+-- Returns label, r, g, b.
+function FWR:GetAdvisorConfidence(seconds)
+    seconds = tonumber(seconds) or 0
+    if seconds >= CONFIDENCE_HIGH_SECONDS then
+        return "High", 0.3, 1, 0.3
+    end
+    return "Low", 1, 0.85, 0.2
 end
 
 ------------------------------------------------------------
 -- Queries
 ------------------------------------------------------------
 
--- Groups all stored data by zone or by subzone, according to the Advisor settings.
+-- Groups all stored data per zone + sub-zone.
 -- explicitItemID bypasses the expansion/profession filters for a specific item search.
 local function buildGroups(explicitItemID)
     local db, settings = FWR:EnsureAdvisorStore()
     local currentExpansion = getCurrentExpansion()
-    local known = settings.professionFilter and getKnownProfessionSkillLines() or nil
+    local known = getKnownProfessionSkillLines()
     local groups = {}
 
     for key, data in pairs(db) do
         if not isMetaKey(key) and type(data) == "table" and type(data.items) == "table" then
-            local groupName = key
-            if settings.aggregate == "zone" then
-                groupName = zoneOfKey(key, data)
-            end
+            local group = { name = key, time = 0, gold = 0, vendor = 0, items = {} }
+            groups[key] = group
 
-            local group = groups[groupName]
-            if not group then
-                group = { name = groupName, time = 0, gold = 0, items = {} }
-                groups[groupName] = group
-            end
-
-            group.time = group.time + (tonumber(data.time) or 0)
-            group.gold = group.gold + (tonumber(data.gold) or 0)
+            group.time = tonumber(data.time) or 0
+            group.gold = tonumber(data.gold) or 0
+            group.vendor = tonumber(data.vendor) or 0
 
             for itemKey, info in pairs(data.items) do
                 local include = true
@@ -344,17 +408,12 @@ local function buildGroups(explicitItemID)
                         include = expansion ~= nil and expansion >= currentExpansion
                     end
                     if include then
-                        include = itemMatchesProfessions(info, known)
+                        include = characterCanObtain(tonumber(info.id), known)
                     end
                 end
 
                 if include then
-                    local merged = group.items[itemKey]
-                    if not merged then
-                        merged = { id = info.id, name = info.name, quality = info.quality, count = 0 }
-                        group.items[itemKey] = merged
-                    end
-                    merged.count = merged.count + (tonumber(info.count) or 0)
+                    group.items[itemKey] = { id = info.id, name = info.name, quality = info.quality, count = tonumber(info.count) or 0 }
                 end
             end
         end
@@ -413,18 +472,43 @@ function FWR:ParseAdvisorQuery(queryText)
     return itemID, name, quality
 end
 
--- exactItemID / exactQuality come from a shift-clicked item link and take priority over
--- whatever can be parsed from the typed text.
-function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality)
+-- First stored item ID that matches a typed name.
+local function findStoredItemID(groups, name)
+    for _, group in pairs(groups) do
+        for _, info in pairs(group.items) do
+            if normalizeName(info.name) == name then
+                return tonumber(info.id)
+            end
+        end
+    end
+    return nil
+end
+
+-- exactItemID / exactQuality come from a dropped or shift-clicked item and take priority over
+-- whatever can be parsed from the typed text. includeQuality == false ignores every quality.
+-- Returns the result list; when this character could never gather the item, a text saying why;
+-- and, when no place has enough time yet, the best place so far ({ zone, seconds }).
+function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, includeQuality)
     local itemID, name, quality = self:ParseAdvisorQuery(queryText)
     itemID = exactItemID or itemID
     quality = exactQuality or quality
+    if includeQuality == false then
+        quality = nil
+    end
     if not itemID and (not name or name == "") then
         return {}
     end
 
+    local groups = buildGroups(true)
+
+    local restriction = self:GetAdvisorItemRestriction(itemID or findStoredItemID(groups, name))
+    if restriction then
+        return {}, restriction
+    end
+
     local results = {}
-    for _, group in pairs(buildGroups(true)) do
+    local partial = nil
+    for _, group in pairs(groups) do
         if group.time >= self.ADVISOR_MIN_SECONDS then
             local count = 0
             local matchedName = nil
@@ -445,20 +529,40 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality)
             end
 
             if count > 0 then
+                local label, r, g, b = self:GetAdvisorConfidence(group.time)
                 results[#results + 1] = {
                     zone = group.name,
                     totalTime = group.time,
                     count = count,
                     perHour = math.floor((count / group.time) * 3600),
                     itemName = matchedName,
+                    confidence = label,
+                    confidenceColor = { r, g, b },
                 }
+            end
+        elseif group.time > 0 then
+            for _, info in pairs(group.items) do
+                local matches
+                if itemID then
+                    matches = tonumber(info.id) == itemID
+                else
+                    matches = normalizeName(info.name) == name
+                end
+                if matches and info.count > 0 and (not partial or group.time > partial.seconds) then
+                    partial = { zone = group.name, seconds = group.time }
+                end
             end
         end
     end
 
+    if #results == 0 then
+        return {}, nil, partial
+    end
     return sortResults(results, "perHour")
 end
 
+-- Estimated gold per hour per place: looted gold + vendor value of other loot + Auction House
+-- value of the materials (after the Auction House cut).
 function FWR:BuildAdvisorGoldResults()
     local ahStore = FarmWiseDB and FarmWiseDB._ah
     local prices = type(ahStore) == "table" and ahStore.items or {}
@@ -466,27 +570,28 @@ function FWR:BuildAdvisorGoldResults()
 
     for _, group in pairs(buildGroups(false)) do
         if group.time >= self.ADVISOR_MIN_SECONDS then
-            local totalCopper, priced, tracked = 0, 0, 0
+            local materialsCopper = 0
             for _, info in pairs(group.items) do
-                local count = tonumber(info.count) or 0
-                if count > 0 then
-                    tracked = tracked + 1
-                    local record = prices[tostring(info.id)]
-                    local unitPrice = record and tonumber(record.unitPrice or record.price)
-                    if unitPrice and unitPrice > 0 then
-                        totalCopper = totalCopper + unitPrice * count
-                        priced = priced + 1
-                    end
+                local record = prices[tostring(info.id)]
+                local unitPrice = record and tonumber(record.unitPrice or record.price)
+                if unitPrice and unitPrice > 0 and info.count > 0 then
+                    materialsCopper = materialsCopper + unitPrice * info.count * (1 - AUCTION_HOUSE_CUT)
                 end
             end
 
-            if priced > 0 then
+            local totalCopper = group.gold + group.vendor + materialsCopper
+            if totalCopper > 0 then
+                local perHour = 3600 / group.time
+                local label, r, g, b = self:GetAdvisorConfidence(group.time)
                 results[#results + 1] = {
                     zone = group.name,
                     totalTime = group.time,
-                    goldPerHour = math.floor((totalCopper / group.time) * 3600),
-                    pricedItems = priced,
-                    trackedItems = tracked,
+                    goldPerHour = math.floor(totalCopper * perHour),
+                    rawPerHour = math.floor(group.gold * perHour),
+                    vendorPerHour = math.floor(group.vendor * perHour),
+                    materialsPerHour = math.floor(materialsCopper * perHour),
+                    confidence = label,
+                    confidenceColor = { r, g, b },
                 }
             end
         end
@@ -495,18 +600,129 @@ function FWR:BuildAdvisorGoldResults()
     return sortResults(results, "goldPerHour")
 end
 
--- Item IDs that should be priced by the auction house sync.
-function FWR:CollectAdvisorItemIDs()
-    local ids, seen = {}, {}
+-- Best place for every item this character farms, ranked by quantity per hour (not by value).
+-- includeQuality == false adds up every quality of an item.
+function FWR:BuildAdvisorItemOverview(includeQuality)
+    local best = {}
+
     for _, group in pairs(buildGroups(false)) do
-        for _, info in pairs(group.items) do
-            local itemID = tonumber(info.id)
-            if itemID and not seen[itemID] then
-                seen[itemID] = true
-                ids[#ids + 1] = itemID
+        if group.time >= self.ADVISOR_MIN_SECONDS then
+            local perItem = {}
+            for _, info in pairs(group.items) do
+                local key = includeQuality and (tostring(info.id) .. "|" .. tostring(info.quality)) or tostring(info.id)
+                local entry = perItem[key]
+                if not entry then
+                    entry = { name = info.name, quality = includeQuality and info.quality or nil, count = 0 }
+                    perItem[key] = entry
+                end
+                entry.count = entry.count + info.count
+            end
+
+            for key, entry in pairs(perItem) do
+                if entry.count > 0 then
+                    local perHour = math.floor((entry.count / group.time) * 3600)
+                    local current = best[key]
+                    if not current or perHour > current.perHour then
+                        local label, r, g, b = self:GetAdvisorConfidence(group.time)
+                        best[key] = {
+                            itemName = entry.name,
+                            quality = entry.quality,
+                            zone = group.name,
+                            totalTime = group.time,
+                            count = entry.count,
+                            perHour = perHour,
+                            confidence = label,
+                            confidenceColor = { r, g, b },
+                        }
+                    end
+                end
             end
         end
     end
-    table.sort(ids)
-    return ids
+
+    local list = {}
+    for _, entry in pairs(best) do
+        list[#list + 1] = entry
+    end
+    table.sort(list, function(a, b)
+        if a.perHour == b.perHour then
+            return tostring(a.itemName) < tostring(b.itemName)
+        end
+        return a.perHour > b.perHour
+    end)
+    return list
+end
+
+-- Auction House price of each guide material (best price among its quality ranks), found by item ID.
+local function buildPriceByName()
+    local ahStore = FarmWiseDB and FarmWiseDB._ah
+    local prices = type(ahStore) == "table" and ahStore.items or {}
+    local guide = FWR.STARTER_GUIDE
+    local byName = {}
+
+    for name, idList in pairs(guide and guide.itemIds or {}) do
+        for _, itemID in ipairs(idList) do
+            local record = prices[tostring(itemID)]
+            local unitPrice = record and tonumber(record.unitPrice or record.price)
+            if unitPrice and (not byName[name] or unitPrice > byName[name]) then
+                byName[name] = unitPrice
+            end
+        end
+    end
+    return byName
+end
+
+-- Starter guide suggestions for this character: combinations of its professions first, then single
+-- professions, then what anyone can farm. Data lives in Data/FWR_StarterGuideData.lua.
+-- Returns a list of { title, place, materials = { { name, price } }, note, professions }.
+function FWR:GetStarterGuideEntries()
+    local guide = self.STARTER_GUIDE
+    if type(guide) ~= "table" or type(guide.entries) ~= "table" then
+        return {}
+    end
+
+    local known = getKnownProfessionSkillLines() or {}
+    local priceByName = buildPriceByName()
+    local list = {}
+
+    for index, entry in ipairs(guide.entries) do
+        local required = entry.requires or {}
+        local available = true
+        local names = {}
+        for _, key in ipairs(required) do
+            if not known[PROFESSION_KEYS[key]] then
+                available = false
+                break
+            end
+            names[#names + 1] = PROFESSION_NAMES[PROFESSION_KEYS[key]]
+        end
+
+        if available then
+            local materials = {}
+            for _, name in ipairs(entry.materials or {}) do
+                materials[#materials + 1] = { name = name, price = priceByName[name] }
+            end
+            list[#list + 1] = {
+                order = index,
+                need = #required,
+                title = entry.title,
+                place = entry.place,
+                materials = materials,
+                note = entry.note,
+                professions = #names > 0 and table.concat(names, " + ") or "Any character",
+            }
+        end
+    end
+
+    table.sort(list, function(a, b)
+        if a.need ~= b.need then
+            return a.need > b.need
+        end
+        return a.order < b.order
+    end)
+    return list
+end
+
+function FWR:GetStarterGuideVersion()
+    return self.STARTER_GUIDE and self.STARTER_GUIDE.version or nil
 end

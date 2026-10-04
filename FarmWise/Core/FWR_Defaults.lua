@@ -1,9 +1,9 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
-FWR.VERSION = "2.1.3-engine-display-pass"
+FWR.VERSION = "3.0.0"
 FWR.DB_VERSION = 1
-FWR.BUILD_NAME = "FarmWiseReforged_2.1.3"
+FWR.BUILD_NAME = "FarmWise_3.0.0"
 
 FWR.DEFAULT_SETTINGS = {
     ui = {
@@ -59,6 +59,11 @@ FWR.DEFAULT_SETTINGS = {
         combinedCharacterAllZones = false,
         zoneData = false,
         subZoneData = true,
+    },
+    ah = {
+        autoScan = true,
+        sound = true,
+        freshnessMinutes = 30,
     },
     engine = {
         sessionResetMode = "manual",

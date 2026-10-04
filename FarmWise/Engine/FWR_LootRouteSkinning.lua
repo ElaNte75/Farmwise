@@ -304,13 +304,6 @@ function FWR:HandleSkinningSpellcastStart(unitToken, castGUID, spellID)
 
     local fallbackSpellName = resolvePlayerCastOrChannelSpellName()
     local isMatch, spellName = isSkinningSpell(spellID, fallbackSpellName)
-    if not isMatch and self.ResolveGatherOwnerFromSpell then
-        local resolvedOwner = self:ResolveGatherOwnerFromSpell(fallbackSpellName or spellName, spellID)
-        if resolvedOwner == "skinning" then
-            isMatch = true
-            spellName = normalizeLower(fallbackSpellName or spellName) or "skinning"
-        end
-    end
     if not isMatch then
         return
     end
@@ -353,10 +346,6 @@ function FWR:HandleSkinningSpellcastCancelled(unitToken, castGUID, spellID, reas
 
     local state = self:EnsureSkinningRouteState()
     local isMatch = state.castActive == true and (not spellID or tonumber(spellID) == state.spellID)
-    if not isMatch and state.castActive == true and self.ResolveGatherOwnerFromSpell then
-        local resolvedOwner = self:ResolveGatherOwnerFromSpell(resolvePlayerCastOrChannelSpellName() or state.spellName, spellID)
-        isMatch = resolvedOwner == "skinning"
-    end
     if not isMatch then
         return
     end
@@ -376,10 +365,6 @@ function FWR:HandleSkinningSpellcastSucceeded(unitToken, castGUID, spellID)
 
     local state = self:EnsureSkinningRouteState()
     local isMatch = state.castActive == true and (not spellID or tonumber(spellID) == state.spellID)
-    if not isMatch and state.castActive == true and self.ResolveGatherOwnerFromSpell then
-        local resolvedOwner = self:ResolveGatherOwnerFromSpell(resolvePlayerCastOrChannelSpellName() or state.spellName, spellID)
-        isMatch = resolvedOwner == "skinning"
-    end
     if not isMatch then
         return
     end

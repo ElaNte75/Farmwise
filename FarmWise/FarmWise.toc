@@ -1,16 +1,16 @@
 ## Interface: 120100
 ## Title: FarmWise
 ## Notes: Farm smarter, zone by zone
-## Version: 3.0.0-dev
+## Version: 3.0.0
 ## Author: ChrGeo/GPT
 ## SavedVariables: FarmWiseDB, FarmWiseReforgedDB, FarmWiseReforgedSettingsDB
-## OptionalDeps: Auctionator
 
 Core/FWR_Defaults.lua
 Core/FWR_Events.lua
 Core/FWR_Storage.lua
+Data/FWR_StarterGuideData.lua
 Core/FWR_AdvisorStore.lua
-Core/FWR_AuctionSync.lua
+Core/FWR_AuctionScan.lua
 Core/FWR_RarityFilter.lua
 Core/FWR_SessionReset.lua
 Core/FWR_CharacterScope.lua
@@ -28,13 +28,15 @@ Engine/FWR_LootRouteFishing.lua
 Engine/FWR_LootRouteSkinning.lua
 Engine/FWR_LootRouteCombat.lua
 Engine/FWR_LootHandler.lua
+Engine/FWR_VendorLoot.lua
 Rendering/FWR_RenderConfigurator.lua
 Rendering/FWR_RenderState.lua
 Rendering/FWR_Rendering.lua
+UI/FWR_PanelStyle.lua
 UI/FWR_MainFrameConfigurator.lua
 UI/FWR_MainFrame.lua
 UI/FWR_ControlPanelConfigurator.lua
-UI/FWR_SettingsPanel.lua
+UI/FWR_CombatVisibility.lua
 UI/FWR_ControlPanelWindow.lua
 UI/FWR_LauncherIcon.lua
 UI/FWR_AdvisorPanel.lua

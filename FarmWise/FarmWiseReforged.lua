@@ -43,7 +43,6 @@ local function handleAddonLoaded(addonName)
 
     FWR:EnsureDatabases()
     FWR:EnsureAdvisorStore()
-    FWR:RegisterOptionsCategory()
 end
 
 function FWR:ResetSessionForScope()
@@ -61,11 +60,11 @@ local function handlePlayerLogin()
     if FWR.EnsureRenderState then
         FWR:EnsureRenderState()
     end
+    FWR:ResetIdleTransientState()
     if FWR.RefreshIdleZoneInfo then
         FWR:RefreshIdleZoneInfo()
     end
     FWR:InitializeMainFrameUI()
-    FWR:RegisterOptionsCategory()
     local ui = FWR.Settings and FWR.Settings.ui or {}
     if FWR.Settings and FWR.Settings.ui then
         FWR.Settings.ui.mainWindowVisible = (ui.showMainWindowOnGameLoad ~= false)
@@ -79,13 +78,29 @@ local function handlePlayerLogin()
     printStatus()
 end
 
+local CANCEL_REASONS = {
+    UNIT_SPELLCAST_INTERRUPTED = "interrupt",
+    UNIT_SPELLCAST_FAILED = "failed",
+    UNIT_SPELLCAST_STOP = "stop",
+    UNIT_SPELLCAST_CHANNEL_STOP = "channel_stop",
+}
+local CANCEL_HANDLERS = {
+    "HandleHerbalismSpellcastCancelled",
+    "HandleMiningSpellcastCancelled",
+    "HandleFishingSpellcastCancelled",
+    "HandleSkinningSpellcastCancelled",
+}
+
 frame:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         handleAddonLoaded(...)
     elseif event == "PLAYER_LOGIN" then
         handlePlayerLogin()
     elseif event == "CHAT_MSG_LOOT" then
-        FWR:HandleLootChatMessage(...)
+        if not FWR:IsOtherPlayerLootMessage(...) then
+            FWR:HandleLootChatMessage(...)
+            FWR:HandleVendorLootMessage(...)
+        end
     elseif event == "CHAT_MSG_MONEY" then
         if FWR.HandleLootMoneyChatMessage then
             FWR:HandleLootMoneyChatMessage(...)
@@ -123,50 +138,17 @@ frame:SetScript("OnEvent", function(_, event, ...)
         if FWR.HandleTradeSkillItemCraftedResult then
             FWR:HandleTradeSkillItemCraftedResult(...)
         end
-    elseif event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_CHANNEL_STOP" then
-        if event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" then
-            if FWR.HandleHerbalismSpellcastCancelled then
-                FWR:HandleHerbalismSpellcastCancelled(..., event == "UNIT_SPELLCAST_INTERRUPTED" and "interrupt" or "failed")
-            end
-            if FWR.HandleMiningSpellcastCancelled then
-                FWR:HandleMiningSpellcastCancelled(..., event == "UNIT_SPELLCAST_INTERRUPTED" and "interrupt" or "failed")
-            end
-            if FWR.HandleFishingSpellcastCancelled then
-                FWR:HandleFishingSpellcastCancelled(..., event == "UNIT_SPELLCAST_INTERRUPTED" and "interrupt" or "failed")
-            end
-            if FWR.HandleSkinningSpellcastCancelled then
-                FWR:HandleSkinningSpellcastCancelled(..., event == "UNIT_SPELLCAST_INTERRUPTED" and "interrupt" or "failed")
-            end
-        elseif event == "UNIT_SPELLCAST_STOP" then
-            if FWR.HandleHerbalismSpellcastCancelled then
-                FWR:HandleHerbalismSpellcastCancelled(..., "stop")
-            end
-            if FWR.HandleMiningSpellcastCancelled then
-                FWR:HandleMiningSpellcastCancelled(..., "stop")
-            end
-            if FWR.HandleFishingSpellcastCancelled then
-                FWR:HandleFishingSpellcastCancelled(..., "stop")
-            end
-            if FWR.HandleSkinningSpellcastCancelled then
-                FWR:HandleSkinningSpellcastCancelled(..., "stop")
-            end
-        elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
-            if FWR.HandleHerbalismSpellcastCancelled then
-                FWR:HandleHerbalismSpellcastCancelled(..., "channel_stop")
-            end
-            if FWR.HandleMiningSpellcastCancelled then
-                FWR:HandleMiningSpellcastCancelled(..., "channel_stop")
-            end
-            if FWR.HandleFishingSpellcastCancelled then
-                FWR:HandleFishingSpellcastCancelled(..., "channel_stop")
-            end
-            if FWR.HandleSkinningSpellcastCancelled then
-                FWR:HandleSkinningSpellcastCancelled(..., "channel_stop")
+    elseif CANCEL_REASONS[event] then
+        local unit, castGUID, spellID = ...
+        for _, handlerName in ipairs(CANCEL_HANDLERS) do
+            if FWR[handlerName] then
+                FWR[handlerName](FWR, unit, castGUID, spellID, CANCEL_REASONS[event])
             end
         end
-    elseif event == "AUCTION_HOUSE_SHOW" or event == "AUCTION_HOUSE_CLOSED" then
-        FWR:SetAuctionHouseOpen(event == "AUCTION_HOUSE_SHOW")
-        FWR:RefreshAdvisorPanel()
+    elseif event:find("^AUCTION_HOUSE_") then
+        FWR:HandleAuctionHouseEvent(event, ...)
+    elseif event == "GET_ITEM_INFO_RECEIVED" then
+        FWR:HandleItemInfoReceived()
     elseif event == "PLAYER_REGEN_DISABLED" then
         if FWR.HandleIdleCombatStart then
             FWR:HandleIdleCombatStart(...)
@@ -230,24 +212,31 @@ end)
 FWR:Subscribe("lootMoneyRecorded", function(copper)
     FWR:RecordAdvisorGold(copper)
 end)
+FWR:Subscribe("vendorValueRecorded", function(copper, zone, subzone)
+    FWR:RecordAdvisorVendor(copper, zone, subzone)
+end)
 FWR:Subscribe("dataCleared", function()
     FWR:ClearAdvisorData()
 end)
 
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 frame:RegisterEvent("AUCTION_HOUSE_SHOW")
 frame:RegisterEvent("AUCTION_HOUSE_CLOSED")
+frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_ADDED")
+frame:RegisterEvent("AUCTION_HOUSE_BROWSE_FAILURE")
 frame:RegisterEvent("CHAT_MSG_LOOT")
 frame:RegisterEvent("CHAT_MSG_MONEY")
-frame:RegisterEvent("UNIT_SPELLCAST_START")
-frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 frame:RegisterEvent("TRADE_SKILL_ITEM_CRAFTED_RESULT")
-frame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-frame:RegisterEvent("UNIT_SPELLCAST_FAILED")
-frame:RegisterEvent("UNIT_SPELLCAST_STOP")
-frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_FAILED", "player")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_STOP", "player")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
 frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -255,8 +244,7 @@ frame:RegisterEvent("ZONE_CHANGED")
 frame:RegisterEvent("ZONE_CHANGED_INDOORS")
 frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
-SLASH_FARMWISEREFORGED1 = "/fwr"
-SLASH_FARMWISEREFORGED2 = "/fw"
+SLASH_FARMWISEREFORGED1 = "/fw"
 SlashCmdList.FARMWISEREFORGED = function(message)
     local command = message and message:lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
 
@@ -270,8 +258,8 @@ SlashCmdList.FARMWISEREFORGED = function(message)
         return
     end
 
-    if command == "sync" then
-        FWR:SyncAuctionPrices()
+    if command == "scan" or command == "sync" then
+        FWR:StartAuctionScan()
         return
     end
 
@@ -287,9 +275,9 @@ SlashCmdList.FARMWISEREFORGED = function(message)
     end
 
     if command == "options" then
-        FWR:OpenOptionsCategory()
+        FWR:OpenControlPanelWindow()
         return
     end
 
-    print("|cffd7be6aFarmWise|r commands: /fw advisor, /fw sync, /fw ui, /fw options, /fw status")
+    print("|cffd7be6aFarmWise|r commands: /fw advisor, /fw scan, /fw ui, /fw options, /fw status")
 end

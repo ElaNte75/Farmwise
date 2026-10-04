@@ -430,15 +430,7 @@ local function getResolvedSecondaryDisplayHost(self)
 end
 
 local function getSecondaryDisplayTimerState(self, now)
-    local elapsedSeconds, isRunning = 0, false
-
-    if self.UpdateDisplayCombatTimer then
-        elapsedSeconds, isRunning = self:UpdateDisplayCombatTimer(now)
-    elseif self.GetDisplayTimerElapsedSeconds then
-        elapsedSeconds = self:GetDisplayTimerElapsedSeconds()
-    end
-
-    return elapsedSeconds, isRunning
+    return 0, false
 end
 
 local EXPANSION_NAME_FALLBACKS = {
@@ -2325,31 +2317,6 @@ function FWR:AddToDisplayBasket(classifiedEntry, quantity)
 
     if self.TouchDatabase then
         self:TouchDatabase()
-    end
-    self:RefreshDisplayText()
-end
-
-function FWR:ResetDisplayQuantities()
-    if self.ResetRenderStateQuantities then
-        self:ResetRenderStateQuantities()
-    else
-        local state = ensureState(self)
-        for _, entry in pairs(state.byKey) do
-            entry.quantityCount = 0
-        end
-    end
-    self:RefreshDisplayText()
-end
-
-function FWR:ClearDisplayEntries()
-    if self.ClearRenderState then
-        self:ClearRenderState()
-    else
-        local basket = {
-            order = {},
-            byKey = {},
-        }
-        syncDisplayBasketAliases(self, basket)
     end
     self:RefreshDisplayText()
 end

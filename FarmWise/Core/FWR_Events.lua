@@ -10,6 +10,8 @@ FarmWiseReforged = FWR
 --   lootRecorded(entry, quantity)    an accepted loot entry was added to the display basket
 --   activeTimeElapsed(seconds)       active farming time was credited
 --   lootMoneyRecorded(copper)        looted money was credited
+--   vendorValueRecorded(copper, zone, subzone)  vendor value of looted non-material items
+--   dataCleared()                    the user erased all saved data
 
 local subscribers = {}
 

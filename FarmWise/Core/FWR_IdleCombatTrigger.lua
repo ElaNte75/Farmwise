@@ -9,7 +9,6 @@ function FWR:HandleIdleCombatStart()
     end
 
     local state = self:EnsureIdleSystemState()
-    local canTakeOwnership = self.CanActivateIdleTrigger and self:CanActivateIdleTrigger("combat", self:Now()) or true
 
     state.inCombat = true
     state.graceDeadline = nil

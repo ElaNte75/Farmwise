@@ -43,36 +43,6 @@ local function roundCopper(value)
     return math.max(0, math.floor((tonumber(value) or 0) + 0.5))
 end
 
-local function createMoneyIconMarkup(texturePath)
-    return string.format("|T%s:12:12:2:0|t", texturePath)
-end
-
-local GOLD_ICON = createMoneyIconMarkup("Interface\\MoneyFrame\\UI-GoldIcon")
-local SILVER_ICON = createMoneyIconMarkup("Interface\\MoneyFrame\\UI-SilverIcon")
-local COPPER_ICON = createMoneyIconMarkup("Interface\\MoneyFrame\\UI-CopperIcon")
-
-local function formatMoneyShort(copper)
-    copper = roundCopper(copper)
-
-    if type(GetCoinTextureString) == "function" then
-        return GetCoinTextureString(copper)
-    end
-
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local copperOnly = copper % 100
-
-    if gold > 0 then
-        return string.format("%d%s %d%s %d%s", gold, GOLD_ICON, silver, SILVER_ICON, copperOnly, COPPER_ICON)
-    end
-
-    if silver > 0 then
-        return string.format("%d%s %d%s", silver, SILVER_ICON, copperOnly, COPPER_ICON)
-    end
-
-    return string.format("%d%s", copperOnly, COPPER_ICON)
-end
-
 local function getCurrentGoldContextInfo(self)
     local idleState = self.EnsureIdleSystemState and self:EnsureIdleSystemState() or nil
     local current = idleState and idleState.current or nil
@@ -114,7 +84,6 @@ end
 local function getLootMoneyMessagePatterns()
     return {
         buildFormatPattern(_G and _G.YOU_LOOT_MONEY),
-        buildFormatPattern(_G and _G.LOOT_MONEY),
         buildFormatPattern(_G and _G.LOOT_MONEY_SPLIT),
         buildFormatPattern(_G and _G.YOU_LOOT_MONEY_GUILD),
     }

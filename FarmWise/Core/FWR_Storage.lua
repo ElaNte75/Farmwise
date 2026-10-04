@@ -72,6 +72,11 @@ local function normalizeDisplayFilterAliases(settings, defaults)
 end
 
 function FWR:EnsureDatabases()
+    -- called many times a frame: once the databases are set up there is nothing left to do
+    if self.__fwrDatabasesReady and self.DB == FarmWiseReforgedDB and self.Settings == FarmWiseReforgedSettingsDB then
+        return self.DB, self.Settings
+    end
+
     local now = self:Now()
 
     if type(FarmWiseReforgedDB) ~= "table" then
@@ -103,6 +108,7 @@ function FWR:EnsureDatabases()
 
     self.DB = FarmWiseReforgedDB
     self.Settings = FarmWiseReforgedSettingsDB
+    self.__fwrDatabasesReady = true
     return self.DB, self.Settings
 end
 
@@ -123,6 +129,11 @@ function FWR:ClearAllSavedData()
     self.DB = FarmWiseReforgedDB
 
     self:Emit("dataCleared")
+
+    -- the new database has no current zone yet; without it no time or gold is credited
+    if self.RefreshIdleZoneInfo then
+        self:RefreshIdleZoneInfo()
+    end
 
     if self.TouchDatabase then
         self:TouchDatabase()

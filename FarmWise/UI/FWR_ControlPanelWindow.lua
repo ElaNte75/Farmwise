@@ -17,28 +17,9 @@ local HEADER_HEIGHT = WINDOW_CONFIG.headerHeight or 56
 local CONTENT_PADDING = WINDOW_CONFIG.contentPadding or 18
 
 local DISPLAY_PAGE_CONFIG = PAGE_CONFIG.display or {}
-local DISPLAY_CONTROL_ENTRIES = DISPLAY_PAGE_CONFIG.controls or {
-    { key = "item", label = "Item Name", locked = true, defaultValue = true, fixedOrder = 1 },
-    { key = "quantity", label = "Session", defaultValue = true },
-    { key = "total", label = "Total", defaultValue = true },
-    { key = "itemPerHour", label = "Item / Hour", defaultValue = true },
-    { key = "activity", label = "Activity", defaultValue = true },
-    { key = "itemType", label = "Reagent Type", defaultValue = false },
-    { key = "classification", label = "Profession", defaultValue = false },
-    { key = "expansion", label = "Expansion", defaultValue = false },
-    { key = "zone", label = "Zone", defaultValue = false },
-    { key = "subZone", label = "Sub-Zone", defaultValue = false },
-    { key = "character", label = "Character", defaultValue = false },
-}
+local DISPLAY_CONTROL_ENTRIES = DISPLAY_PAGE_CONFIG.controls or {}
 
-local CATEGORY_ORDER = CATEGORY_CONFIG.order or {
-    { key = "interface", label = "Interface" },
-    { key = "display", label = "Display" },
-    { key = "tracking", label = "Tracking" },
-    { key = "engine", label = "Engine" },
-    { key = "data", label = "Data" },
-    { key = "info", label = "Info" },
-}
+local CATEGORY_ORDER = CATEGORY_CONFIG.order or {}
 
 local INTERFACE_PAGE_CONFIG = PAGE_CONFIG.interface or {}
 local INTERFACE_OPTIONS = INTERFACE_PAGE_CONFIG.options or {}
@@ -995,9 +976,7 @@ local function createEnginePage(parent)
     end
 
     local function touchEngine()
-        if FWR.TouchTrackingDisplay then
-            FWR:TouchTrackingDisplay()
-        elseif FWR.RefreshDisplayText then
+        if FWR.RefreshDisplayText then
             FWR:RefreshDisplayText()
         end
     end
@@ -1121,6 +1100,100 @@ local function createEnginePage(parent)
     return page
 end
 
+local function createAuctionPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints(parent)
+
+    local config = PAGE_CONFIG.auction or {}
+    local checkboxConfig = (PAGE_CONFIG.engine or {}).checkbox or {}
+
+    local function styleCheck(check, text)
+        check:SetHitRectInsets(0, 0, 0, 0)
+        if check.Text then
+            check.Text:ClearAllPoints()
+            check.Text:SetPoint("LEFT", check, "RIGHT", checkboxConfig.textOffsetX or 0, checkboxConfig.textOffsetY or 1)
+            check.Text:SetJustifyH("LEFT")
+            check.Text:SetText(text or "")
+        end
+    end
+
+    local note = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    note:SetPoint("TOPLEFT", 0, -2)
+    note:SetPoint("RIGHT", page, "RIGHT", -18, 0)
+    note:SetJustifyH("LEFT")
+    note:SetJustifyV("TOP")
+    note:SetText(config.note or "")
+
+    local autoCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+    autoCheck:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
+    styleCheck(autoCheck, (config.autoScan or {}).label)
+
+    local soundCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+    soundCheck:SetPoint("TOPLEFT", autoCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+    styleCheck(soundCheck, (config.sound or {}).label)
+
+    local intervalTitle = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    intervalTitle:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", 0, -14)
+    intervalTitle:SetTextColor(1, 1, 1, 1)
+    intervalTitle:SetText(config.intervalTitle or "")
+
+    local intervalChecks = {}
+    local previous = intervalTitle
+    for _, interval in ipairs(config.intervals or {}) do
+        local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+        check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+        styleCheck(check, interval.label)
+        check.minutes = interval.minutes
+        intervalChecks[#intervalChecks + 1] = check
+        previous = check
+    end
+
+    local function refresh()
+        local autoEnabled = getBooleanSetting({ "ah", "autoScan" }, true)
+        autoCheck:SetChecked(autoEnabled)
+        updateCheckboxVisual(autoCheck)
+
+        soundCheck:SetChecked(getBooleanSetting({ "ah", "sound" }, true))
+        updateCheckboxVisual(soundCheck)
+
+        local current = getNumberSetting({ "ah", "freshnessMinutes" }, 30)
+        for _, check in ipairs(intervalChecks) do
+            check:SetChecked(check.minutes == current)
+            if autoEnabled then
+                check:Enable()
+            else
+                check:Disable()
+            end
+            updateCheckboxVisual(check)
+        end
+        intervalTitle:SetAlpha(autoEnabled and 1 or 0.45)
+    end
+
+    autoCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "autoScan" }, self:GetChecked() == true)
+        refresh()
+    end)
+
+    soundCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "sound" }, self:GetChecked() == true)
+        refresh()
+    end)
+
+    for _, check in ipairs(intervalChecks) do
+        check:SetScript("OnClick", function(self)
+            setNumberSetting({ "ah", "freshnessMinutes" }, self.minutes)
+            refresh()
+            if FWR.RefreshAdvisorPanel then
+                FWR:RefreshAdvisorPanel()
+            end
+        end)
+    end
+
+    page:SetScript("OnShow", refresh)
+    refresh()
+    return page
+end
+
 local function createInfoPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints(parent)
@@ -1237,12 +1310,10 @@ local function buildWindow()
 
     frame:SetBackdrop({
         bgFile = "Interface/Buttons/WHITE8X8",
-        edgeFile = "Interface/Buttons/WHITE8X8",
-        edgeSize = 1,
         insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
     frame:SetBackdropColor(unpack(COLOR_CONFIG.frameBg or { 0.04, 0.03, 0.02, 0.94 }))
-    frame:SetBackdropBorderColor(unpack(COLOR_CONFIG.frameBorder or { 0.85, 0.65, 0.15, 0.55 }))
+    FWR:AddPanelBorder(frame)
 
     frame.header = CreateFrame("Frame", nil, frame)
     frame.header:SetPoint("TOPLEFT", 0, 0)
@@ -1319,9 +1390,11 @@ local function buildWindow()
 
     frame.footerNote = frame.footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.footerNote:SetPoint("LEFT", frame.footer, "LEFT", (FOOTER_CONFIG.note and FOOTER_CONFIG.note.x) or 18, (FOOTER_CONFIG.note and FOOTER_CONFIG.note.y) or 0)
+    frame.footerNote:SetPoint("RIGHT", frame.closeButton, "LEFT", -12, 0)
     frame.footerNote:SetJustifyH("LEFT")
+    frame.footerNote:SetWordWrap(false)
     frame.footerNote:SetTextColor(unpack(COLOR_CONFIG.footerNote or { 0.72, 0.72, 0.72, 1.0 }))
-    frame.footerNote:SetText((FOOTER_CONFIG.note and FOOTER_CONFIG.note.text) or "Use the left menu to move between Interface, Display, Tracking, Engine, Data, and Info.")
+    frame.footerNote:SetText((FOOTER_CONFIG.note and FOOTER_CONFIG.note.text) or "Use the left menu to move between pages.")
 
     frame.contentInset = CreateFrame("Frame", nil, frame.content)
     frame.contentInset:SetPoint("TOPLEFT", frame.content, "TOPLEFT", CONTENT_PADDING, -18)
@@ -1350,6 +1423,7 @@ local function buildWindow()
     frame.Pages.display = createDisplayPage(frame.contentInset, frame)
     frame.Pages.tracking = createTrackingPage(frame.contentInset)
     frame.Pages.engine = createEnginePage(frame.contentInset)
+    frame.Pages.auction = createAuctionPage(frame.contentInset)
     frame.Pages.data = createDataPage(frame.contentInset)
     frame.Pages.info = createInfoPage(frame.contentInset)
 
@@ -1362,9 +1436,6 @@ end
 
 function FWR:OpenControlPanelWindow()
     local frame = buildWindow()
-    if self.OptionsPanel and self.OptionsPanel.Hide then
-        self.OptionsPanel:Hide()
-    end
     selectCategory(frame, "interface")
     refreshInterfaceDependencies(frame)
     if self.ApplySettingsVisibilityRules then

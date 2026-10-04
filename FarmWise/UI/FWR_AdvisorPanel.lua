@@ -1,21 +1,41 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
--- Advisor window: ranks zones by items/hour for one item, or by estimated gold/hour.
+-- Advisor window.
+--   Gold: the places with the most gold per hour. With no farming data yet it shows the starter guide.
+--   Item: the best yields so far, or the best places for one item you search, drop or shift-click.
+-- It uses the same look as the control panel (colors come from UI_CONFIG.ControlPanelWindow).
 
-local PANEL_WIDTH = 470
-local PANEL_HEIGHT = 470
-local ROW_HEIGHT = 58
-local MAX_ROWS = 40
+local PANEL_CONFIG = (FWR.UI_CONFIG and FWR.UI_CONFIG.ControlPanelWindow) or {}
+local COLOR_CONFIG = PANEL_CONFIG.colors or {}
+
+local PANEL_WIDTH = 440
+local PANEL_HEIGHT = 410
+local HEADER_HEIGHT = 56
+local FOOTER_HEIGHT = 44
+local PADDING = 18
+local ROW_HEIGHT = 64
+local VISIBLE_ROWS = 3   -- the mouse wheel moves by this many results at a time
+local MAX_ROWS = 60
+local MAX_STAT_CHARS = 66
 
 local MODE_ITEM = "item"
 local MODE_GOLD = "gold"
 
+local GUIDE_TAG_COLOR = { 0.55, 0.8, 1.0 }
+local NOTICE_COLOR = { 1.0, 0.82, 0.0 }
+local MUTED_COLOR = { 0.8, 0.8, 0.8 }
+
 local panel = nil
-local mode = MODE_ITEM
+local mode = MODE_GOLD
 local exactItemID = nil
 local exactQuality = nil
+local exactName = nil
 local autoFilledText = nil
+
+local function color(name, fallback)
+    return unpack(COLOR_CONFIG[name] or fallback)
+end
 
 local function formatTime(seconds)
     seconds = math.floor(tonumber(seconds) or 0)
@@ -27,6 +47,15 @@ local function formatTime(seconds)
     return string.format("%dm", minutes)
 end
 
+local function groupThousands(number)
+    local text = tostring(number)
+    local replaced
+    repeat
+        text, replaced = text:gsub("^(%-?%d+)(%d%d%d)", "%1.%2")
+    until replaced == 0
+    return text
+end
+
 local function formatGold(copper)
     local gold = math.floor((tonumber(copper) or 0) / 10000)
     if gold >= 1000 then
@@ -34,12 +63,23 @@ local function formatGold(copper)
     elseif gold >= 100 then
         gold = math.floor(gold / 10) * 10
     end
-    local text = tostring(gold)
-    local replaced
-    repeat
-        text, replaced = text:gsub("^(%-?%d+)(%d%d%d)", "%1.%2")
-    until replaced == 0
-    return text .. "|TInterface\\MoneyFrame\\UI-GoldIcon:0|t"
+    return groupThousands(gold) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:0|t"
+end
+
+-- Price of one item: gold with one decimal, or silver for cheap items.
+local function formatPrice(copper)
+    copper = tonumber(copper) or 0
+    if copper >= 10000 then
+        return string.format("%.1f", copper / 10000) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:0|t"
+    end
+    return string.format("%d", math.floor(copper / 100)) .. "|TInterface\\MoneyFrame\\UI-SilverIcon:0|t"
+end
+
+local function truncate(text, limit)
+    if #text <= limit then
+        return text
+    end
+    return text:sub(1, limit - 3) .. "..."
 end
 
 local function createButton(parent, width, label)
@@ -47,6 +87,34 @@ local function createButton(parent, width, label)
     button:SetSize(width, 22)
     button:SetText(label)
     return button
+end
+
+-- Same checkbox look as the control panel: gold text when selected.
+local function createCheck(parent, label)
+    local check = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
+    check:SetHitRectInsets(0, 0, 0, 0)
+    if check.Text then
+        check.Text:ClearAllPoints()
+        check.Text:SetPoint("LEFT", check, "RIGHT", 0, 1)
+        check.Text:SetJustifyH("LEFT")
+        check.Text:SetText(label)
+    end
+    return check
+end
+
+local function setCheckState(check, isChecked)
+    check:SetChecked(isChecked)
+    if check.Text then
+        if isChecked then
+            check.Text:SetTextColor(1.0, 0.82, 0.0, 1.0)
+        else
+            check.Text:SetTextColor(0.82, 0.82, 0.82, 1.0)
+        end
+    end
+end
+
+local function includeQuality()
+    return FWR:GetAdvisorSettings().includeQuality == true
 end
 
 local function getRow(index)
@@ -58,16 +126,20 @@ local function getRow(index)
     row = {}
     row.zone = panel.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     row.zone:SetJustifyH("LEFT")
+    row.zone:SetWordWrap(false)
+    row.confidence = panel.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.confidence:SetJustifyH("RIGHT")
     row.stats = panel.content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.stats:SetJustifyH("LEFT")
     row.stats:SetSpacing(2)
     row.divider = panel.content:CreateTexture(nil, "ARTWORK")
-    row.divider:SetColorTexture(1, 1, 1, 0.12)
+    row.divider:SetColorTexture(color("divider", { 1, 1, 1, 0.10 }))
     row.divider:SetHeight(1)
 
     local top = -((index - 1) * ROW_HEIGHT)
+    row.confidence:SetPoint("TOPRIGHT", panel.content, "TOPRIGHT", -4, top - 6)
     row.zone:SetPoint("TOPLEFT", panel.content, "TOPLEFT", 4, top - 4)
-    row.zone:SetPoint("RIGHT", panel.content, "RIGHT", -4, 0)
+    row.zone:SetPoint("RIGHT", row.confidence, "LEFT", -8, 0)
     row.stats:SetPoint("TOPLEFT", row.zone, "BOTTOMLEFT", 0, -3)
     row.stats:SetPoint("RIGHT", panel.content, "RIGHT", -4, 0)
     row.divider:SetPoint("TOPLEFT", panel.content, "TOPLEFT", 0, top - ROW_HEIGHT + 2)
@@ -79,36 +151,174 @@ end
 
 local function setRowVisible(row, visible)
     row.zone:SetShown(visible)
+    row.confidence:SetShown(visible)
     row.stats:SetShown(visible)
     row.divider:SetShown(visible)
 end
 
-local function showHint(text)
-    panel.hint:SetText(text or "")
-    panel.hint:SetShown(text ~= nil and text ~= "")
+local function fillRow(row, data)
+    row.zone:SetText(data.title)
+    row.confidence:SetText(data.right or "")
+    local rightColor = data.rightColor or { 1, 1, 1 }
+    row.confidence:SetTextColor(rightColor[1], rightColor[2], rightColor[3])
+    row.stats:SetText(data.stats or "")
 end
 
-local function refreshSettingButtons()
-    local settings = FWR:GetAdvisorSettings()
-    panel.groupButton:SetText(settings.aggregate == "zone" and "Group: Zone" or "Group: Subzone")
-    panel.expansionButton:SetText(settings.currentExpansionOnly and "Items: Current expansion" or "Items: All expansions")
-    panel.professionButton:SetText(settings.professionFilter and "My professions" or "All professions")
+------------------------------------------------------------
+-- What the list shows
+------------------------------------------------------------
+
+local function confidenceText(result)
+    return "Confidence: " .. (result.confidence or "-"), result.confidenceColor
 end
 
-local function refreshModeButtons()
-    panel.itemModeButton:SetEnabled(mode ~= MODE_ITEM)
-    panel.goldModeButton:SetEnabled(mode ~= MODE_GOLD)
-    panel.input:SetShown(mode == MODE_ITEM)
-    panel.clearButton:SetShown(mode == MODE_ITEM)
-    panel.scroll:ClearAllPoints()
-    if mode == MODE_ITEM then
-        panel.scroll:SetPoint("TOPLEFT", panel.input, "BOTTOMLEFT", -4, -8)
-        panel.help:SetText("Best zones for one item, by items per hour.")
+local function placeRow(result)
+    local right, rightColor = confidenceText(result)
+    local stats
+    if mode == MODE_GOLD then
+        stats = string.format(
+            "Farming time: %s\nEstimated gold/hour: %s\nLooted gold %s  -  Vendor items %s  -  Materials %s",
+            formatTime(result.totalTime), formatGold(result.goldPerHour),
+            formatGold(result.rawPerHour), formatGold(result.vendorPerHour), formatGold(result.materialsPerHour))
     else
-        panel.scroll:SetPoint("TOPLEFT", panel.settingsAnchor, "BOTTOMLEFT", 0, -8)
-        panel.help:SetText("Best zones by estimated gold per hour (Auctionator prices).")
+        stats = string.format(
+            "Farming time: %s\nGathered: %d items\nAverage yield: %d/hour",
+            formatTime(result.totalTime), result.count, result.perHour)
     end
-    panel.scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 46)
+    return { title = result.zone, right = right, rightColor = rightColor, stats = stats }
+end
+
+local function overviewRow(result)
+    local right, rightColor = confidenceText(result)
+    local title = tostring(result.itemName)
+    if result.quality then
+        title = string.format("%s (%s)", title, result.quality)
+    end
+    local stats = string.format(
+        "Best place: %s\nFarming time: %s\nAverage yield: %d/hour",
+        truncate(result.zone, MAX_STAT_CHARS - 12), formatTime(result.totalTime), result.perHour)
+    return { title = title, right = right, rightColor = rightColor, stats = stats }
+end
+
+local function guideRow(entry)
+    local materials = {}
+    for _, material in ipairs(entry.materials) do
+        if material.price then
+            materials[#materials + 1] = string.format("%s (%s)", material.name, formatPrice(material.price))
+        else
+            materials[#materials + 1] = material.name
+        end
+    end
+
+    local lines = { "Where: " .. truncate(entry.place or "", MAX_STAT_CHARS - 7) }
+    if #materials > 0 then
+        lines[#lines + 1] = "Materials: " .. truncate(table.concat(materials, ", "), MAX_STAT_CHARS - 11)
+    end
+    if entry.note and entry.note ~= "" then
+        lines[#lines + 1] = truncate(entry.note, MAX_STAT_CHARS)
+    end
+
+    return {
+        title = entry.title,
+        right = "Starter guide",
+        rightColor = GUIDE_TAG_COLOR,
+        stats = table.concat(lines, "\n"),
+    }
+end
+
+local function guideRows()
+    local rows = {}
+    for _, entry in ipairs(FWR:GetStarterGuideEntries()) do
+        rows[#rows + 1] = guideRow(entry)
+    end
+    return rows
+end
+
+-- Returns rows, notice text, notice color for the current mode and search.
+local function buildView()
+    local minutes = math.floor(FWR.ADVISOR_MIN_SECONDS / 60)
+
+    if mode == MODE_GOLD then
+        local rows = {}
+        for _, result in ipairs(FWR:BuildAdvisorGoldResults()) do
+            rows[#rows + 1] = placeRow(result)
+        end
+        if #rows > 0 then
+            return rows, "", MUTED_COLOR
+        end
+
+        local notice
+        if FWR:GetAuctionSyncAgeSeconds() == nil then
+            notice = "No Auction House prices yet. Open the Auction House and keep it open until the scan finishes. "
+                .. FWR:GetAuctionScanEstimateText() .. " A sound plays when it is done."
+        else
+            notice = string.format("Not enough farming data yet (a place needs %d+ minutes). The starter guide below (%s) is replaced by your own data as you farm.",
+                minutes, FWR:GetStarterGuideVersion() or "community guides")
+        end
+        return guideRows(), notice, NOTICE_COLOR
+    end
+
+    local query = panel.input:GetText() or ""
+    if query == "" then
+        local rows = {}
+        for _, result in ipairs(FWR:BuildAdvisorItemOverview(includeQuality())) do
+            rows[#rows + 1] = overviewRow(result)
+        end
+        if #rows > 0 then
+            return rows, "Your best yields so far, ranked by quantity per hour (not by value). Search an item for its best places.", MUTED_COLOR
+        end
+        return rows, string.format("Type an item name, drop an item here, or shift-click one. Nothing has %d+ minutes of farming yet.", minutes), NOTICE_COLOR
+    end
+
+    local quality = includeQuality() and exactQuality or nil
+    local results, restriction, partial = FWR:BuildAdvisorItemResults(query, exactItemID, quality, includeQuality())
+    local rows = {}
+    for _, result in ipairs(results) do
+        rows[#rows + 1] = placeRow(result)
+    end
+    if #rows > 0 then
+        return rows, "", MUTED_COLOR
+    end
+
+    if restriction then
+        return rows, restriction, NOTICE_COLOR
+    end
+    if partial then
+        return rows, string.format("Not enough farming time yet. Best place so far: %s (%s of %d minutes needed).",
+            partial.zone, formatTime(partial.seconds), minutes), NOTICE_COLOR
+    end
+    return rows, string.format("No place with %d+ minutes of farming for this item.", minutes), NOTICE_COLOR
+end
+
+local function refreshControls()
+    local settings = FWR:GetAdvisorSettings()
+    panel.modeButton:SetText(mode == MODE_GOLD and "Mode: Gold" or "Mode: Item")
+    setCheckState(panel.qualityCheck, includeQuality())
+    setCheckState(panel.expansionCheck, settings.currentExpansionOnly == true)
+
+    local isItemMode = mode == MODE_ITEM
+    panel.qualityCheck:SetShown(isItemMode)
+    panel.input:SetShown(isItemMode)
+    panel.clearButton:SetShown(isItemMode)
+
+    panel.notice:ClearAllPoints()
+    if isItemMode then
+        panel.notice:SetPoint("TOPLEFT", panel.input, "BOTTOMLEFT", -4, -6)
+        panel.help:SetText("Best yields and best places for the items you farm.")
+    else
+        panel.notice:SetPoint("TOPLEFT", panel.modeRow, "BOTTOMLEFT", 0, -8)
+        panel.help:SetText("Where to go for the most gold per hour (Auction House prices minus 5%).")
+    end
+    panel.notice:SetPoint("RIGHT", panel.body, "RIGHT", -PADDING, 0)
+end
+
+-- The age of the prices and the Scan AH button (which waits for the 15 minute safety lock).
+local function refreshScanStatus()
+    local text, r, g, b = FWR:GetAuctionSyncAgeText()
+    panel.syncAge:SetText(text)
+    panel.syncAge:SetTextColor(r, g, b)
+    panel.syncButton:SetEnabled(FWR:IsAuctionHouseOpen() and not FWR:IsAuctionScanRunning()
+        and FWR:GetAuctionScanCooldownSeconds() == 0)
 end
 
 function FWR:RefreshAdvisorPanel()
@@ -116,64 +326,77 @@ function FWR:RefreshAdvisorPanel()
         return
     end
 
-    refreshModeButtons()
-    refreshSettingButtons()
+    refreshControls()
+    refreshScanStatus()
 
-    local text, r, g, b = self:GetAuctionSyncAgeText()
-    panel.syncAge:SetText(text)
-    panel.syncAge:SetTextColor(r, g, b)
-    panel.syncButton:SetEnabled(self:HasAuctionator() and self:IsAuctionHouseOpen())
+    local rows, notice, noticeColor = buildView()
 
-    local minutes = math.floor(self.ADVISOR_MIN_SECONDS / 60)
-    local results
-    local emptyHint
-    if mode == MODE_GOLD then
-        results = self:BuildAdvisorGoldResults()
-        emptyHint = string.format("No priced zone data yet (needs %d+ min of farming and synced AH prices).", minutes)
-    else
-        local query = panel.input:GetText() or ""
-        if query == "" then
-            results = {}
-            emptyHint = "Type an item name, or shift-click an item."
-        else
-            results = self:BuildAdvisorItemResults(query, exactItemID, exactQuality)
-            emptyHint = string.format("No zone data for this item (needs %d+ min of farming).", minutes)
-        end
-    end
+    panel.notice:SetText(notice)
+    panel.notice:SetTextColor(noticeColor[1], noticeColor[2], noticeColor[3])
+    panel.notice:SetHeight(notice ~= "" and math.max(14, panel.notice:GetStringHeight()) or 1)
 
-    local shown = math.min(#results, MAX_ROWS)
+    panel.scroll:ClearAllPoints()
+    panel.scroll:SetPoint("TOPLEFT", panel.notice, "BOTTOMLEFT", 0, -8)
+    panel.scroll:SetPoint("BOTTOMRIGHT", panel.body, "BOTTOMRIGHT", -(PADDING + 12), 10)
+
+    local shown = math.min(#rows, MAX_ROWS)
     for index = 1, shown do
         local row = getRow(index)
-        local result = results[index]
-        row.zone:SetText(result.zone)
-        if mode == MODE_GOLD then
-            row.stats:SetText(string.format(
-                "Farming time: %s\nPriced items: %d/%d\nEstimated gold/hour: %s",
-                formatTime(result.totalTime), result.pricedItems, result.trackedItems, formatGold(result.goldPerHour)))
-        else
-            row.stats:SetText(string.format(
-                "Farming time: %s\nGathered: %d items\nAverage yield: %d/hour",
-                formatTime(result.totalTime), result.count, result.perHour))
-        end
+        fillRow(row, rows[index])
         setRowVisible(row, true)
     end
-
     for index = shown + 1, #panel.rows do
         setRowVisible(panel.rows[index], false)
     end
 
     panel.content:SetHeight(math.max(shown * ROW_HEIGHT, 1))
-    showHint(shown == 0 and emptyHint or nil)
+
+    -- start from the top when what the list shows changes
+    local viewKey = mode .. "|" .. (panel.input:GetText() or "") .. "|" .. tostring(includeQuality())
+    if panel.lastViewKey ~= viewKey then
+        panel.lastViewKey = viewKey
+        panel.scroll:SetVerticalScroll(0)
+    end
 end
+
+------------------------------------------------------------
+-- Search box
+------------------------------------------------------------
 
 local function clearExactSelection()
     exactItemID = nil
     exactQuality = nil
+    exactName = nil
     autoFilledText = nil
 end
 
-local function applyItemLink(link)
-    if not panel or not panel.input:HasFocus() or type(link) ~= "string" then
+local function buildAutoText()
+    if includeQuality() and exactQuality then
+        return string.format("%s (%s)", exactName, exactQuality)
+    end
+    return exactName
+end
+
+-- Keeps the text in the search box in line with the "Include quality" choice.
+local function syncSearchTextWithQuality()
+    if exactItemID then
+        autoFilledText = buildAutoText()
+        panel.input:SetText(autoFilledText)
+        return
+    end
+
+    if not includeQuality() then
+        local text = panel.input:GetText() or ""
+        local stripped = text:gsub("%s*%([Qq]%d+%)%s*$", "")
+        if stripped ~= text then
+            panel.input:SetText(stripped)
+        end
+    end
+end
+
+-- Puts an item into the search box from an item link (shift-click, drag and drop).
+local function setItemFromLink(link)
+    if type(link) ~= "string" then
         return false
     end
 
@@ -182,89 +405,179 @@ local function applyItemLink(link)
         return false
     end
 
-    local name = GetItemInfo(itemID) or link:match("%[(.-)%]") or tostring(itemID)
     local tier = C_TradeSkillUI and C_TradeSkillUI.GetItemReagentQualityByItemInfo
         and C_TradeSkillUI.GetItemReagentQualityByItemInfo(link) or 0
 
+    mode = MODE_ITEM
     exactItemID = itemID
     exactQuality = (tier and tier > 0) and ("Q" .. tier) or nil
-    autoFilledText = exactQuality and string.format("%s (%s)", name, exactQuality) or name
+    exactName = GetItemInfo(itemID) or link:match("%[(.-)%]") or tostring(itemID)
+    autoFilledText = buildAutoText()
     panel.input:SetText(autoFilledText)
     panel.input:SetCursorPosition(#autoFilledText)
     FWR:RefreshAdvisorPanel()
     return true
 end
 
-local function buildPanel()
-    panel = CreateFrame("Frame", "FarmWiseAdvisorFrame", UIParent, "BasicFrameTemplateWithInset")
+-- Shift-click works while the search box has the keyboard focus.
+local function applyItemLinkFromClick(link)
+    if panel and panel.input:HasFocus() then
+        return setItemFromLink(link)
+    end
+    return false
+end
+
+-- Dropping an item from the bags onto the window.
+local function receiveDroppedItem()
+    local infoType, itemID, itemLink = GetCursorInfo()
+    if infoType ~= "item" then
+        return
+    end
+
+    ClearCursor()
+    setItemFromLink(itemLink or ("item:" .. tostring(itemID)))
+end
+
+local function enableDrop(frame)
+    frame:SetScript("OnReceiveDrag", receiveDroppedItem)
+    frame:HookScript("OnMouseUp", function()
+        if GetCursorInfo() then
+            receiveDroppedItem()
+        end
+    end)
+end
+
+-- The mouse wheel moves by whole pages of VISIBLE_ROWS results.
+local function pageScroll(scrollFrame, delta)
+    local step = VISIBLE_ROWS * ROW_HEIGHT
+    local currentPage = math.floor(scrollFrame:GetVerticalScroll() / step + 0.5)
+    local target = (currentPage - delta) * step
+    target = math.max(0, math.min(target, scrollFrame:GetVerticalScrollRange()))
+    scrollFrame:SetVerticalScroll(target)
+end
+
+------------------------------------------------------------
+-- Building the window
+------------------------------------------------------------
+
+local function createBackground(parent, colorName, fallback)
+    local texture = parent:CreateTexture(nil, "BACKGROUND")
+    texture:SetAllPoints()
+    texture:SetColorTexture(color(colorName, fallback))
+    return texture
+end
+
+local function buildFrame()
+    panel = CreateFrame("Frame", "FarmWiseAdvisorFrame", UIParent, "BackdropTemplate")
     panel:SetSize(PANEL_WIDTH, PANEL_HEIGHT)
     panel:SetPoint("CENTER")
     panel:SetFrameStrata("DIALOG")
+    panel:SetFrameLevel(30)
     panel:SetMovable(true)
     panel:EnableMouse(true)
-    panel:RegisterForDrag("LeftButton")
-    panel:SetScript("OnDragStart", panel.StartMoving)
-    panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
     panel:SetClampedToScreen(true)
     panel:Hide()
     panel.rows = {}
-
-    if panel.TitleText then
-        panel.TitleText:SetText("FarmWise Advisor")
-    end
+    FWR.AdvisorPanel = panel
     table.insert(UISpecialFrames, "FarmWiseAdvisorFrame")
 
-    panel.itemModeButton = createButton(panel, 100, "Item")
-    panel.itemModeButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -34)
-    panel.itemModeButton:SetScript("OnClick", function()
-        mode = MODE_ITEM
-        FWR:RefreshAdvisorPanel()
-    end)
+    panel:SetBackdrop({
+        bgFile = "Interface/Buttons/WHITE8X8",
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    panel:SetBackdropColor(color("frameBg", { 0.04, 0.03, 0.02, 0.94 }))
 
-    panel.goldModeButton = createButton(panel, 100, "Gold")
-    panel.goldModeButton:SetPoint("LEFT", panel.itemModeButton, "RIGHT", 6, 0)
-    panel.goldModeButton:SetScript("OnClick", function()
-        mode = MODE_GOLD
-        FWR:RefreshAdvisorPanel()
-    end)
+    panel.header = CreateFrame("Frame", nil, panel)
+    panel.header:SetPoint("TOPLEFT", 0, 0)
+    panel.header:SetPoint("TOPRIGHT", 0, 0)
+    panel.header:SetHeight(HEADER_HEIGHT)
+    panel.header:EnableMouse(true)
+    panel.header:RegisterForDrag("LeftButton")
+    panel.header:SetScript("OnDragStart", function() panel:StartMoving() end)
+    panel.header:SetScript("OnDragStop", function() panel:StopMovingOrSizing() end)
+    createBackground(panel.header, "headerBg", { 0.10, 0.08, 0.05, 0.95 })
 
-    panel.help = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    panel.help:SetPoint("LEFT", panel.goldModeButton, "RIGHT", 10, 0)
-    panel.help:SetPoint("RIGHT", panel, "RIGHT", -14, 0)
+    panel.footer = CreateFrame("Frame", nil, panel)
+    panel.footer:SetPoint("BOTTOMLEFT", 0, 0)
+    panel.footer:SetPoint("BOTTOMRIGHT", 0, 0)
+    panel.footer:SetHeight(FOOTER_HEIGHT)
+    createBackground(panel.footer, "footerBg", { 0.10, 0.08, 0.05, 0.95 })
+
+    panel.body = CreateFrame("Frame", nil, panel)
+    panel.body:SetPoint("TOPLEFT", panel.header, "BOTTOMLEFT", 0, 0)
+    panel.body:SetPoint("BOTTOMRIGHT", panel.footer, "TOPRIGHT", 0, 0)
+    panel.body:EnableMouse(true)
+    createBackground(panel.body, "contentBg", { 0.06, 0.05, 0.03, 0.82 })
+
+    local headerLine = panel:CreateTexture(nil, "BORDER")
+    headerLine:SetPoint("TOPLEFT", panel.header, "BOTTOMLEFT", 0, 0)
+    headerLine:SetPoint("TOPRIGHT", panel.header, "BOTTOMRIGHT", 0, 0)
+    headerLine:SetHeight(1)
+    headerLine:SetColorTexture(color("divider", { 1, 1, 1, 0.10 }))
+
+    local footerLine = panel:CreateTexture(nil, "BORDER")
+    footerLine:SetPoint("BOTTOMLEFT", panel.footer, "TOPLEFT", 0, 0)
+    footerLine:SetPoint("BOTTOMRIGHT", panel.footer, "TOPRIGHT", 0, 0)
+    footerLine:SetHeight(1)
+    footerLine:SetColorTexture(color("divider", { 1, 1, 1, 0.10 }))
+
+    panel.title = panel.header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    panel.title:SetPoint("TOPLEFT", 18, -12)
+    panel.title:SetTextColor(color("title", { 0.95, 0.82, 0.42, 1.0 }))
+    panel.title:SetText("FarmWise")
+
+    panel.titleAccent = panel.header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    panel.titleAccent:SetPoint("LEFT", panel.title, "RIGHT", 6, 0)
+    panel.titleAccent:SetTextColor(color("titleAccent", { 0.96, 0.96, 0.96, 1.0 }))
+    panel.titleAccent:SetText("Advisor")
+
+    panel.help = panel.header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    panel.help:SetPoint("TOPLEFT", panel.title, "BOTTOMLEFT", 0, -6)
+    panel.help:SetPoint("RIGHT", panel.header, "RIGHT", -18, 0)
     panel.help:SetJustifyH("LEFT")
-    panel.help:SetWordWrap(true)
+    panel.help:SetWordWrap(false)
+    panel.help:SetTextColor(color("subtitle", { 0.80, 0.80, 0.80, 1.0 }))
 
-    panel.settingsAnchor = CreateFrame("Frame", nil, panel)
-    panel.settingsAnchor:SetSize(1, 22)
-    panel.settingsAnchor:SetPoint("TOPLEFT", panel.itemModeButton, "BOTTOMLEFT", 0, -8)
+    FWR:AddPanelBorder(panel)
+end
 
-    panel.groupButton = createButton(panel, 120, "")
-    panel.groupButton:SetPoint("LEFT", panel.settingsAnchor, "LEFT", 0, 0)
-    panel.groupButton:SetScript("OnClick", function()
-        local settings = FWR:GetAdvisorSettings()
-        settings.aggregate = settings.aggregate == "zone" and "subzone" or "zone"
+local function buildControls()
+    -- first row: the mode switch, "Include quality" (item mode only) and "This expansion only" (always, fixed place)
+    panel.modeRow = CreateFrame("Frame", nil, panel.body)
+    panel.modeRow:SetSize(1, 22)
+    panel.modeRow:SetPoint("TOPLEFT", panel.body, "TOPLEFT", PADDING, -12)
+
+    panel.modeButton = createButton(panel.body, 104, "Mode: Gold")
+    panel.modeButton:SetPoint("LEFT", panel.modeRow, "LEFT", 0, 0)
+    panel.modeButton:SetScript("OnClick", function()
+        mode = mode == MODE_GOLD and MODE_ITEM or MODE_GOLD
+        FWR:RefreshAdvisorPanel()
+    end)
+    panel.modeButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(mode == MODE_GOLD and "Click to switch to Item mode." or "Click to switch to Gold mode.")
+        GameTooltip:Show()
+    end)
+    panel.modeButton:SetScript("OnLeave", GameTooltip_Hide)
+
+    panel.qualityCheck = createCheck(panel.body, "Include quality")
+    panel.qualityCheck:SetPoint("LEFT", panel.modeRow, "LEFT", 112, 0)
+    panel.qualityCheck:SetScript("OnClick", function(self)
+        FWR:GetAdvisorSettings().includeQuality = self:GetChecked() == true
+        syncSearchTextWithQuality()
         FWR:RefreshAdvisorPanel()
     end)
 
-    panel.expansionButton = createButton(panel, 170, "")
-    panel.expansionButton:SetPoint("LEFT", panel.groupButton, "RIGHT", 6, 0)
-    panel.expansionButton:SetScript("OnClick", function()
-        local settings = FWR:GetAdvisorSettings()
-        settings.currentExpansionOnly = not settings.currentExpansionOnly
+    panel.expansionCheck = createCheck(panel.body, "This expansion only")
+    panel.expansionCheck:SetPoint("LEFT", panel.modeRow, "LEFT", 250, 0)
+    panel.expansionCheck:SetScript("OnClick", function(self)
+        FWR:GetAdvisorSettings().currentExpansionOnly = self:GetChecked() == true
         FWR:RefreshAdvisorPanel()
     end)
 
-    panel.professionButton = createButton(panel, 120, "")
-    panel.professionButton:SetPoint("LEFT", panel.expansionButton, "RIGHT", 6, 0)
-    panel.professionButton:SetScript("OnClick", function()
-        local settings = FWR:GetAdvisorSettings()
-        settings.professionFilter = not settings.professionFilter
-        FWR:RefreshAdvisorPanel()
-    end)
-
-    panel.input = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-    panel.input:SetSize(PANEL_WIDTH - 110, 22)
-    panel.input:SetPoint("TOPLEFT", panel.settingsAnchor, "BOTTOMLEFT", 8, -10)
+    panel.input = CreateFrame("EditBox", nil, panel.body, "InputBoxTemplate")
+    panel.input:SetSize(PANEL_WIDTH - 2 * PADDING - 74, 22)
+    panel.input:SetPoint("TOPLEFT", panel.modeRow, "BOTTOMLEFT", 8, -8)
     panel.input:SetAutoFocus(false)
     panel.input:SetScript("OnEscapePressed", panel.input.ClearFocus)
     panel.input:SetScript("OnEnterPressed", panel.input.ClearFocus)
@@ -275,7 +588,7 @@ local function buildPanel()
         FWR:RefreshAdvisorPanel()
     end)
 
-    panel.clearButton = createButton(panel, 60, "Clear")
+    panel.clearButton = createButton(panel.body, 60, "Clear")
     panel.clearButton:SetPoint("LEFT", panel.input, "RIGHT", 6, 0)
     panel.clearButton:SetScript("OnClick", function()
         clearExactSelection()
@@ -284,55 +597,109 @@ local function buildPanel()
         FWR:RefreshAdvisorPanel()
     end)
 
-    panel.scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+    -- a short message above the list: instructions, hints or why the list is empty
+    panel.notice = panel.body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    panel.notice:SetJustifyH("LEFT")
+    panel.notice:SetJustifyV("TOP")
+
+    panel.scroll = CreateFrame("ScrollFrame", nil, panel.body, "UIPanelScrollFrameTemplate")
+    panel.scroll:EnableMouseWheel(true)
+    panel.scroll:SetScript("OnMouseWheel", pageScroll)
     panel.content = CreateFrame("Frame", nil, panel.scroll)
-    panel.content:SetSize(PANEL_WIDTH - 60, 1)
+    panel.content:SetSize(PANEL_WIDTH - 2 * PADDING - 24, 1)
     panel.scroll:SetScrollChild(panel.content)
 
-    panel.hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    panel.hint:SetPoint("TOPLEFT", panel.scroll, "TOPLEFT", 6, -8)
-    panel.hint:SetPoint("RIGHT", panel.scroll, "RIGHT", -6, 0)
-    panel.hint:SetJustifyH("LEFT")
+    enableDrop(panel.body)
+    enableDrop(panel.input)
+    enableDrop(panel.scroll)
+end
 
-    panel.syncAge = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    panel.syncAge:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 18)
+local function buildFooter()
+    panel.closeButton = CreateFrame("Button", nil, panel.footer, "UIPanelButtonTemplate")
+    panel.closeButton:SetSize(84, 24)
+    panel.closeButton:SetPoint("RIGHT", panel.footer, "RIGHT", -PADDING, 0)
+    panel.closeButton:SetText("Close")
+    panel.closeButton:SetScript("OnClick", function() panel:Hide() end)
 
-    panel.syncButton = createButton(panel, 90, "AH Sync")
-    panel.syncButton:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -14, 12)
+    panel.syncButton = CreateFrame("Button", nil, panel.footer, "UIPanelButtonTemplate")
+    panel.syncButton:SetSize(84, 24)
+    panel.syncButton:SetPoint("RIGHT", panel.closeButton, "LEFT", -8, 0)
+    panel.syncButton:SetText("Scan AH")
     panel.syncButton:SetScript("OnClick", function()
-        FWR:SyncAuctionPrices()
+        FWR:StartAuctionScan()
     end)
     panel.syncButton:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        if not FWR:HasAuctionator() then
-            GameTooltip:SetText("Requires the Auctionator addon.")
+        local cooldown = FWR:GetAuctionScanCooldownSeconds()
+        if FWR:IsAuctionScanRunning() then
+            GameTooltip:SetText("A scan is already running.")
+        elseif cooldown > 0 then
+            GameTooltip:SetText(string.format("The prices are still fresh. Available again in %d minutes.", math.ceil(cooldown / 60)))
         elseif not FWR:IsAuctionHouseOpen() then
-            GameTooltip:SetText("Open the Auction House and refresh Auctionator first.")
+            GameTooltip:SetText("Open the Auction House to scan trade material prices.")
         else
-            GameTooltip:SetText("Copy current Auctionator prices for your tracked items.")
+            GameTooltip:SetText("Scan the Auction House for trade material prices now.")
         end
         GameTooltip:Show()
     end)
     panel.syncButton:SetScript("OnLeave", GameTooltip_Hide)
 
+    panel.syncAge = panel.footer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    panel.syncAge:SetPoint("LEFT", panel.footer, "LEFT", PADDING, 0)
+end
+
+local function hookItemLinks()
+    if type(hooksecurefunc) ~= "function" then
+        return
+    end
+
+    if type(ChatEdit_InsertLink) == "function" then
+        hooksecurefunc("ChatEdit_InsertLink", applyItemLinkFromClick)
+    end
+    if type(HandleModifiedItemClick) == "function" then
+        hooksecurefunc("HandleModifiedItemClick", function(link)
+            if IsModifiedClick and IsModifiedClick("CHATLINK") then
+                applyItemLinkFromClick(link)
+            end
+        end)
+    end
+end
+
+local function buildPanel()
+    buildFrame()
+    buildControls()
+    buildFooter()
+    hookItemLinks()
+
     panel:SetScript("OnShow", function()
         FWR:RefreshAdvisorPanel()
     end)
 
-    if type(hooksecurefunc) == "function" then
-        if type(ChatEdit_InsertLink) == "function" then
-            hooksecurefunc("ChatEdit_InsertLink", applyItemLink)
+    local elapsedSinceStatus = 0
+    panel:SetScript("OnUpdate", function(_, elapsed)
+        elapsedSinceStatus = elapsedSinceStatus + elapsed
+        if elapsedSinceStatus >= 1 then
+            elapsedSinceStatus = 0
+            refreshScanStatus()
         end
-        if type(HandleModifiedItemClick) == "function" then
-            hooksecurefunc("HandleModifiedItemClick", function(link)
-                if IsModifiedClick and IsModifiedClick("CHATLINK") then
-                    applyItemLink(link)
-                end
-            end)
-        end
-    end
+    end)
 
     return panel
+end
+
+-- Item data arrives in bursts; refresh once after it settles.
+local itemInfoRefreshPending = false
+
+function FWR:HandleItemInfoReceived()
+    if itemInfoRefreshPending or not panel or not panel:IsShown() then
+        return
+    end
+
+    itemInfoRefreshPending = true
+    C_Timer.After(0.5, function()
+        itemInfoRefreshPending = false
+        FWR:RefreshAdvisorPanel()
+    end)
 end
 
 function FWR:ToggleAdvisorPanel()
@@ -342,6 +709,7 @@ function FWR:ToggleAdvisorPanel()
     if panel:IsShown() then
         panel:Hide()
     else
+        mode = MODE_GOLD -- the Advisor always opens on Gold
         panel:Show()
     end
 end

@@ -768,6 +768,12 @@ function FWR:RefreshMainWindowText()
 
     applyMainFrameMoneyLayout(self.MainFrame)
 
+    if self.MainFrame.scanner and self.GetAuctionSyncAgeText then
+        local scannerText, red, green, blue = self:GetAuctionSyncAgeText()
+        self.MainFrame.scanner:SetText(scannerText)
+        self.MainFrame.scanner:SetTextColor(red, green, blue, 1)
+    end
+
     if self.MainFrame.idle then
         self.MainFrame.idle:SetText(idleText)
         if idleVisual then
@@ -944,6 +950,12 @@ function FWR:CreateMainFrame()
     frame.optionsButton:SetSize(elements.optionsButton.width or 78, elements.optionsButton.height or 24)
     frame.optionsButton:SetText(elements.optionsButton.text or "Options")
     frame.optionsButton:SetScript("OnClick", function() FWR:OpenControlPanelWindow() end)
+
+    frame.advisorButton = CreateFrame("Button", nil, blocks[elements.advisorButton.parentBlock], "UIPanelButtonTemplate")
+    positionTopAnchored(frame.advisorButton, blocks[elements.advisorButton.parentBlock], elements.advisorButton)
+    frame.advisorButton:SetSize(elements.advisorButton.width or 78, elements.advisorButton.height or 24)
+    frame.advisorButton:SetText(elements.advisorButton.text or "Advisor")
+    frame.advisorButton:SetScript("OnClick", function() FWR:ToggleAdvisorPanel() end)
 
     frame.totalGoldGold = createMoneyValueFontString(blocks[elements.totalGoldValue.parentBlock], frame.totalGoldValue, { font = elements.totalGoldValue.font, justifyH = "LEFT", justifyV = elements.totalGoldValue.justifyV, textColor = elements.totalGoldValue.textColor, textAlpha = elements.totalGoldValue.textAlpha, width = 64 })
     frame.totalGoldSilver = createMoneyValueFontString(blocks[elements.totalGoldValue.parentBlock], frame.totalGoldGold, { font = elements.totalGoldValue.font, justifyH = "LEFT", justifyV = elements.totalGoldValue.justifyV, textColor = elements.totalGoldValue.textColor, textAlpha = elements.totalGoldValue.textAlpha, width = 24 })

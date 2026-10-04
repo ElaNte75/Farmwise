@@ -53,6 +53,11 @@ local function extractLootEntries(message)
     return entries
 end
 
+-- Splits a loot chat message into { itemLink, quantity } entries.
+function FWR:ExtractLootEntries(message)
+    return extractLootEntries(message)
+end
+
 function FWR:RetryPendingRoutedLootEntry(itemLink, quantity, attempts)
     attempts = tonumber(attempts) or 0
     if attempts >= 5 or not itemLink then

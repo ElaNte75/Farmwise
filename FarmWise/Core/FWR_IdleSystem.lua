@@ -285,8 +285,6 @@ function FWR:CancelIdleGatherCast(owner)
         return false
     end
 
-    local wasCastActive = state.gatherCastActive == true
-    local wasGraceActive = type(state.gatherDeadline) == "number"
 
     clearGatherTriggerState(state)
     if state.inCombat then
@@ -361,12 +359,6 @@ function FWR:RefreshIdleZoneInfo()
     end
 end
 
-function FWR:GetIdleCurrentContext()
-    local state = self:EnsureIdleSystemState()
-    local context = state.timersByContext[state.current.key or ""]
-    return context, state
-end
-
 function FWR:ApplyIdleElapsed(now)
     local state = self:RefreshIdleTriggerState(now)
     now = tonumber(now) or self:Now()
@@ -438,11 +430,30 @@ function FWR:ApplyIdleElapsed(now)
     state.lastUpdateAt = now
 end
 
+-- Runs every frame; the window text only needs a refresh a couple of times per second.
+local WINDOW_REFRESH_SECONDS = 0.5
+
 function FWR:UpdateIdleSystem(now)
     self:ApplyIdleElapsed(now or self:Now())
-    if self.RefreshMainWindowText then
-        self:RefreshMainWindowText(false)
+
+    local clock = GetTime()
+    if clock - (self.__fwrWindowRefreshedAt or 0) >= WINDOW_REFRESH_SECONDS then
+        self.__fwrWindowRefreshedAt = clock
+        if self.RefreshMainWindowText then
+            self:RefreshMainWindowText()
+        end
     end
+end
+
+-- Forgets what was in progress when the game last closed, so offline time is never counted.
+function FWR:ResetIdleTransientState()
+    local state = self:EnsureIdleSystemState()
+    state.inCombat = false
+    state.graceDeadline = nil
+    state.graceContextKey = nil
+    clearGatherTriggerState(state)
+    state.mode = "IDLE"
+    state.lastUpdateAt = self:Now()
 end
 
 function FWR:GetLiveZoneText()
@@ -453,10 +464,6 @@ end
 function FWR:GetLiveSubzoneText()
     local state = self:EnsureIdleSystemState()
     return state.current.subzone or ""
-end
-
-function FWR:GetIdleCurrentTotalSeconds()
-    return (self:SumViewScopeSeconds())
 end
 
 function FWR:GetLiveTotalTimeValueText()

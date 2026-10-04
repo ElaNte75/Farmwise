@@ -7,7 +7,7 @@ FWR.UI_CONFIG = FWR.UI_CONFIG or {}
 FWR.UI_CONFIG.ControlPanelWindow = {
     window = {
         width = 590,
-        height = 370,
+        height = 410,
         sidebarWidth = 150,
         footerHeight = 52,
         headerHeight = 56,
@@ -42,7 +42,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
     footer = {
         closeButton = { text = "Close", width = 84, height = 24, x = -18, y = 0 },
         note = {
-            text = "Use the left menu to move between Interface, Display, Tracking, Engine, Data, and Info.",
+            text = "Use the left menu to move between pages.",
             x = 18,
             y = 0,
         },
@@ -54,6 +54,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             { key = "display", label = "Display" },
             { key = "tracking", label = "Tracking" },
             { key = "engine", label = "Engine" },
+            { key = "auction", label = "Auction House" },
             { key = "data", label = "Data" },
             { key = "info", label = "Info" },
         },
@@ -70,6 +71,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             display = "Display columns, rows, and main background transparency.",
             tracking = "Tracking filters, combined views, and current data scope.",
             engine = "Internal timers, reset behavior, and rarity filter settings.",
+            auction = "Automatic price scan of trade materials, used by the Advisor.",
             data = "Saved data tools.",
             info = "Addon commands, main window controls, and quick usage notes.",
         },
@@ -219,6 +221,19 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             },
         },
 
+        auction = {
+            note = "FarmWise reads the lowest price of every trade material from the Auction House. The Advisor uses these prices to estimate gold per hour.",
+            autoScan = { label = "Scan automatically when the Auction House opens" },
+            sound = { label = "Play a sound when the scan finishes" },
+            intervalTitle = "Scan again only when the prices are older than:",
+            intervals = {
+                { minutes = 15, label = "15 minutes" },
+                { minutes = 30, label = "30 minutes" },
+                { minutes = 60, label = "1 hour" },
+                { minutes = 120, label = "2 hours" },
+            },
+        },
+
         data = {
             erase = {
                 note = "Erase all saved FarmWise data: the main window data and the statistics the Advisor uses. Settings stay as they are. This cannot be undone.",
@@ -240,9 +255,9 @@ FWR.UI_CONFIG.ControlPanelWindow = {
                 y = -10,
                 rightInset = 18,
                 text = "/fw advisor - open the Advisor (best zones for an item or for gold)\n"
-                    .. "/fw sync - copy Auctionator prices for your tracked items (Auction House must be open)\n"
+                    .. "/fw scan - scan the Auction House prices now (Auction House must be open)\n"
                     .. "/fw ui - show or hide the main frame\n"
-                    .. "/fw options - open the options category\n"
+                    .. "/fw options - open the control panel\n"
                     .. "/fw status - print storage status in chat\n\n"
                     .. "The launcher icon can also show or hide the main frame.",
             },

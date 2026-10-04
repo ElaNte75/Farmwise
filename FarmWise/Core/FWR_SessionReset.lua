@@ -86,11 +86,16 @@ function FWR:TickSessionReset()
     end
 
     local scheduled = getScheduledTimestamp(tonumber(engine.localResetMinutes) or 0, now)
+    local lastReset = tonumber(meta.lastScheduledSessionReset)
+
     if now < scheduled then
+        -- remember when the schedule was first seen, so the coming reset time is not skipped
+        if not lastReset then
+            meta.lastScheduledSessionReset = now
+        end
         return
     end
 
-    local lastReset = tonumber(meta.lastScheduledSessionReset)
     if lastReset and lastReset >= scheduled then
         return
     end

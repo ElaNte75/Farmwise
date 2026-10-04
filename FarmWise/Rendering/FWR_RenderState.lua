@@ -88,23 +88,3 @@ function FWR:GetDisplayBasket()
     return self:EnsureRenderState()
 end
 
-
-function FWR:ResetRenderStateQuantities()
-    local basket = self:EnsureRenderState()
-    local currentCharacterKey = self.GetCurrentCharacterKey and select(1, self:GetCurrentCharacterKey()) or ""
-    for _, entry in pairs(basket.byKey) do
-        if entryMatchesCharacter(self, entry, currentCharacterKey) then
-            entry.quantityCount = 0
-        end
-    end
-    self:TouchDatabase()
-end
-
-function FWR:ClearRenderState()
-    local basket = self:EnsureRenderState()
-    basket.order = {}
-    basket.byKey = {}
-    syncDisplayBasketAliases(self, basket)
-    self:TouchDatabase()
-    return basket
-end
