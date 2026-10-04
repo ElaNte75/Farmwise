@@ -2466,6 +2466,8 @@ function FWR:AddToDisplayBasket(classifiedEntry, quantity)
     entry.quantityCount = (entry.quantityCount or 0) + amount
     entry.totalCount = (entry.totalCount or 0) + amount
 
+    self:Emit("lootRecorded", classifiedEntry, amount)
+
     if self.TouchDatabase then
         self:TouchDatabase()
     end

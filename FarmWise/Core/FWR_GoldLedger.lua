@@ -321,9 +321,7 @@ function FWR:HandleLootMoneyChatMessage(message)
     context.rawLootCopperSession = (tonumber(context.rawLootCopperSession) or 0) + copper
     context.updatedAt = self:Now()
 
-    if self.RecordAdvisorGold then
-        self:RecordAdvisorGold(copper)
-    end
+    self:Emit("lootMoneyRecorded", copper)
 
     self:TouchDatabase()
     if self.RefreshMainWindowText then

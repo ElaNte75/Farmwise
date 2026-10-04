@@ -107,12 +107,7 @@ function FWR:SyncAuctionPrices()
     return true
 end
 
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
-eventFrame:RegisterEvent("AUCTION_HOUSE_CLOSED")
-eventFrame:SetScript("OnEvent", function(_, event)
-    auctionHouseOpen = (event == "AUCTION_HOUSE_SHOW")
-    if FWR.RefreshAdvisorPanel then
-        FWR:RefreshAdvisorPanel()
-    end
-end)
+-- Called by the main file when the auction house window opens or closes.
+function FWR:SetAuctionHouseOpen(isOpen)
+    auctionHouseOpen = isOpen == true
+end

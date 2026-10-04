@@ -251,6 +251,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
                 FWR:HandleSkinningSpellcastCancelled(..., "channel_stop")
             end
         end
+    elseif event == "AUCTION_HOUSE_SHOW" or event == "AUCTION_HOUSE_CLOSED" then
+        FWR:SetAuctionHouseOpen(event == "AUCTION_HOUSE_SHOW")
+        FWR:RefreshAdvisorPanel()
     elseif event == "PLAYER_REGEN_DISABLED" then
         if FWR.HandleIdleCombatStart then
             FWR:HandleIdleCombatStart(...)
@@ -303,8 +306,21 @@ frame:SetScript("OnUpdate", function(_, _)
     end
 end)
 
+-- Module wiring: which module reacts to which engine event.
+FWR:Subscribe("lootRecorded", function(entry, quantity)
+    FWR:RecordAdvisorItem(entry, quantity)
+end)
+FWR:Subscribe("activeTimeElapsed", function(seconds)
+    FWR:RecordAdvisorTime(seconds)
+end)
+FWR:Subscribe("lootMoneyRecorded", function(copper)
+    FWR:RecordAdvisorGold(copper)
+end)
+
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("AUCTION_HOUSE_SHOW")
+frame:RegisterEvent("AUCTION_HOUSE_CLOSED")
 frame:RegisterEvent("CHAT_MSG_LOOT")
 frame:RegisterEvent("CHAT_MSG_MONEY")
 frame:RegisterEvent("BAG_UPDATE_DELAYED")

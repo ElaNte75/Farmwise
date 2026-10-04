@@ -507,6 +507,7 @@ function FWR:ApplyIdleElapsed(now)
     if activeSeconds > 0 then
         context.totalSeconds = (tonumber(context.totalSeconds) or 0) + activeSeconds
         context.sessionSeconds = (tonumber(context.sessionSeconds) or 0) + activeSeconds
+        self:Emit("activeTimeElapsed", activeSeconds)
         self:TouchDatabase()
     end
 
