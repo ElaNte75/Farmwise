@@ -1,0 +1,40 @@
+## Interface: 120100
+## Title: FarmWise
+## Notes: Farm smarter, zone by zone
+## Version: 3.0.0-dev
+## Author: ChrGeo/GPT
+## SavedVariables: FarmWiseDB, FarmWiseReforgedDB, FarmWiseReforgedSettingsDB
+## OptionalDeps: Auctionator
+
+Core/FWR_Defaults.lua
+Core/FWR_Storage.lua
+Core/FWR_AdvisorStore.lua
+Core/FWR_AuctionSync.lua
+Core/FWR_CharacterScope.lua
+Core/FWR_IdleSystem.lua
+Core/FWR_IdleCombatTrigger.lua
+Core/FWR_GoldLedger.lua
+Core/FWR_TooltipSystem.lua
+Core/FWR_SavedDataRebuilder.lua
+Engine/FWR_SourceFilter.lua
+Engine/FWR_AcquisitionContext.lua
+Engine/FWR_LootRouteLoot.lua
+Engine/FWR_LootRouteHerbalism.lua
+Engine/FWR_LootRouteMining.lua
+Engine/FWR_LootRouteFishing.lua
+Engine/FWR_LootRouteSkinning.lua
+Engine/FWR_LootRouteCombat.lua
+Engine/FWR_DisplayBasket.lua
+Engine/FWR_RejectedLootLedger.lua
+Engine/FWR_LootHandler.lua
+Rendering/FWR_RenderConfigurator.lua
+Rendering/FWR_RenderState.lua
+Rendering/FWR_Rendering.lua
+UI/FWR_MainFrameConfigurator.lua
+UI/FWR_MainFrame.lua
+UI/FWR_ControlPanelConfigurator.lua
+UI/FWR_SettingsPanel.lua
+UI/FWR_ControlPanelWindow.lua
+UI/FWR_LauncherIcon.lua
+UI/FWR_AdvisorPanel.lua
+FarmWiseReforged.lua
