@@ -150,26 +150,26 @@ function FWR:CreateLauncherIcon()
     local background = button:CreateTexture(nil, "BACKGROUND")
     background:SetSize(53, 53)
     background:SetPoint("TOPLEFT", 7, -5)
-    background:SetTexture("Interface\Minimap\MiniMap-TrackingBackground")
+    background:SetTexture("Interface/Minimap/MiniMap-TrackingBackground")
     button.background = background
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ICON_SIZE, ICON_SIZE)
     icon:SetPoint("CENTER", 0, 1)
-    icon:SetTexture("Interface\Icons\INV_Misc_Herb_16")
+    icon:SetTexture("Interface/Icons/INV_Misc_Herb_16")
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     button.icon = icon
 
     local border = button:CreateTexture(nil, "OVERLAY")
     border:SetSize(53, 53)
     border:SetPoint("TOPLEFT", 0, 0)
-    border:SetTexture("Interface\Minimap\MiniMap-TrackingBorder")
+    border:SetTexture("Interface/Minimap/MiniMap-TrackingBorder")
     button.border = border
 
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetSize(23, 23)
     highlight:SetPoint("CENTER", 0, 1)
-    highlight:SetTexture("Interface\Minimap\UI-Minimap-ZoomButton-Highlight")
+    highlight:SetTexture("Interface/Minimap/UI-Minimap-ZoomButton-Highlight")
     button.highlight = highlight
 
     button:SetScript("OnClick", function(_, mouseButton)
@@ -178,10 +178,8 @@ function FWR:CreateLauncherIcon()
                 FWR:ToggleMainFrameVisibleState()
             end
         elseif mouseButton == "RightButton" then
-            if FWR and FWR.OpenControlPanel then
-                FWR:OpenControlPanel("interface")
-            elseif FWR and FWR.ToggleOptionsPanelVisibility then
-                FWR:ToggleOptionsPanelVisibility()
+            if FWR and FWR.OpenControlPanelWindow then
+                FWR:OpenControlPanelWindow()
             end
         end
     end)

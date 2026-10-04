@@ -125,8 +125,6 @@ local function ensureGoldContextBucket(ledger, contextKey, zoneName, subZoneName
     bucket.subZoneName = subZoneName
     bucket.rawLootCopperTotal = tonumber(bucket.rawLootCopperTotal) or 0
     bucket.rawLootCopperSession = tonumber(bucket.rawLootCopperSession) or 0
-    bucket.vendorSoldCopperTotal = tonumber(bucket.vendorSoldCopperTotal) or 0
-    bucket.vendorSoldCopperSession = tonumber(bucket.vendorSoldCopperSession) or 0
     bucket.updatedAt = tonumber(bucket.updatedAt) or 0
     return bucket
 end
@@ -184,14 +182,6 @@ local function parseMoneyAmountFromMessage(message)
     return math.max(0, (gold * 10000) + (silver * 100) + copper)
 end
 
-local function getCurrentPendingVendorValue(self, contextKey)
-    if not self.GetRejectedLootPendingVendorValueForContext then
-        return 0
-    end
-
-    return math.max(0, tonumber(self:GetRejectedLootPendingVendorValueForContext(contextKey)) or 0)
-end
-
 function FWR:EnsureGoldLedger()
     self:EnsureDatabases()
     return ensureGoldLedger(self.DB)
@@ -212,42 +202,24 @@ function FWR:GetGoldContextSummary(contextKey)
     end
 
     local context = self:EnsureGoldContext(resolvedContextKey, zoneName, subZoneName)
-    local realizedTotalCopper = (tonumber(context.rawLootCopperTotal) or 0) + (tonumber(context.vendorSoldCopperTotal) or 0)
-    local realizedSessionCopper = (tonumber(context.rawLootCopperSession) or 0) + (tonumber(context.vendorSoldCopperSession) or 0)
-    local pendingVendorCopper = getCurrentPendingVendorValue(self, resolvedContextKey)
+    local totalCopper = tonumber(context.rawLootCopperTotal) or 0
     local idleState = self.EnsureIdleSystemState and self:EnsureIdleSystemState() or nil
     local idleContext = idleState and idleState.timersByContext and idleState.timersByContext[resolvedContextKey] or nil
     local totalSeconds = tonumber(idleContext and idleContext.totalSeconds) or 0
     local estimatedCopperPerHour = 0
 
     if tonumber(totalSeconds) and totalSeconds > 0 then
-        estimatedCopperPerHour = (realizedTotalCopper * 3600) / totalSeconds
+        estimatedCopperPerHour = (totalCopper * 3600) / totalSeconds
     end
 
     return {
         contextKey = resolvedContextKey,
         zoneName = context.zoneName,
         subZoneName = context.subZoneName,
-        rawLootCopperTotal = tonumber(context.rawLootCopperTotal) or 0,
-        rawLootCopperSession = tonumber(context.rawLootCopperSession) or 0,
-        vendorSoldCopperTotal = tonumber(context.vendorSoldCopperTotal) or 0,
-        vendorSoldCopperSession = tonumber(context.vendorSoldCopperSession) or 0,
-        realizedTotalCopper = realizedTotalCopper,
-        realizedSessionCopper = realizedSessionCopper,
-        pendingVendorCopper = pendingVendorCopper,
+        totalCopper = totalCopper,
         totalSeconds = tonumber(totalSeconds) or 0,
         estimatedCopperPerHour = estimatedCopperPerHour,
     }
-end
-
-function FWR:GetLiveTotalGoldText()
-    local summary = self:GetGoldContextSummary()
-    return formatMoneyShort(summary.realizedTotalCopper)
-end
-
-function FWR:GetLiveEstimatedGoldPerHourText()
-    local summary = self:GetGoldContextSummary()
-    return formatMoneyShort(summary.estimatedCopperPerHour)
 end
 
 function FWR:GetMoneyBreakdownFromCopper(copper)
@@ -260,41 +232,12 @@ end
 
 function FWR:GetLiveTotalGoldBreakdown()
     local summary = self:GetGoldContextSummary()
-    return self:GetMoneyBreakdownFromCopper(summary.realizedTotalCopper)
+    return self:GetMoneyBreakdownFromCopper(summary.totalCopper)
 end
 
 function FWR:GetLiveEstimatedGoldPerHourBreakdown()
     local summary = self:GetGoldContextSummary()
     return self:GetMoneyBreakdownFromCopper(summary.estimatedCopperPerHour)
-end
-
-function FWR:ResetCurrentSessionGoldContext()
-    local contextKey, zoneName, subZoneName = getCurrentGoldContextInfo(self)
-    local context = self:EnsureGoldContext(contextKey, zoneName, subZoneName)
-    context.rawLootCopperSession = 0
-    context.vendorSoldCopperSession = 0
-    context.updatedAt = self:Now()
-    self:TouchDatabase()
-    return context
-end
-
-function FWR:RecordVendorSoldCopperForContext(contextKey, zoneName, subZoneName, copper)
-    copper = roundCopper(copper)
-    if copper <= 0 then
-        return nil
-    end
-
-    local context = self:EnsureGoldContext(contextKey, zoneName, subZoneName)
-    context.vendorSoldCopperTotal = (tonumber(context.vendorSoldCopperTotal) or 0) + copper
-    context.vendorSoldCopperSession = (tonumber(context.vendorSoldCopperSession) or 0) + copper
-    context.updatedAt = self:Now()
-
-    self:TouchDatabase()
-    if self.RefreshMainWindowText then
-        self:RefreshMainWindowText()
-    end
-
-    return context, copper
 end
 
 function FWR:HandleLootMoneyChatMessage(message)

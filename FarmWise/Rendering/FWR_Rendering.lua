@@ -121,7 +121,6 @@ local function getClassColorValues(classFile)
 end
 
 local ROW_HEIGHT = 16
-local HEADER_HEIGHT = 22
 local DEFAULT_MAIN_VISIBLE_ROWS = 5
 local DEFAULT_MAIN_TOP_PADDING = 2
 local DEFAULT_MAIN_BOTTOM_PADDING = 4
@@ -130,8 +129,6 @@ local QUALITY_ONE_X_OFFSET = 0
 
 local ESTIMATED_CHAR_WIDTH = 7
 local MAIN_FRAME_SIDE_INSET = 8
-local MAIN_FRAME_SCROLLBAR_GAP = 4
-local MAIN_FRAME_SCROLLBAR_RIGHT_INSET = 8
 
 local function estimateTextWidth(textValue)
     local text = tostring(textValue or "")
@@ -252,13 +249,6 @@ local function getRowHeight(frame)
     return ROW_HEIGHT
 end
 
-local function getVisibleRows(frame)
-    if type(frame) == "table" and type(frame.renderLayoutConfig) == "table" then
-        return math.max(1, math.floor(tonumber(frame.renderLayoutConfig.visibleRows) or DEFAULT_MAIN_VISIBLE_ROWS))
-    end
-    return DEFAULT_MAIN_VISIBLE_ROWS
-end
-
 local function getVerticalPadding(frame)
     local layout = type(frame) == "table" and type(frame.renderLayoutConfig) == "table" and frame.renderLayoutConfig or nil
     return math.max(0, tonumber(layout and layout.topPadding) or DEFAULT_MAIN_TOP_PADDING), math.max(0, tonumber(layout and layout.bottomPadding) or DEFAULT_MAIN_BOTTOM_PADDING)
@@ -296,18 +286,6 @@ local function getRenderConfigForFrame(frame)
         return frame.renderColumnConfig
     end
     return FULL_COLUMN_CONFIG
-end
-
-local function isColumnVisible(frame, key)
-    local config = getRenderConfigForFrame(frame)
-    local column = config and config[key]
-    if type(column) ~= "table" then
-        return false
-    end
-    if column.visible ~= nil and not column.visible then
-        return false
-    end
-    return (tonumber(column.width) or 0) > 0
 end
 
 local DEFAULT_COLUMN_ORDER_KEYS = {
@@ -892,6 +870,10 @@ local function shouldHideEntryFromDisplayFilters(self, entry)
 
     local expansionCategory = resolveEntryExpansionCategory(entry)
     if expansionCategory == "old" and not (self.IsOldExpansionVisible and self:IsOldExpansionVisible()) then
+        hideEntry = true
+    end
+
+    if self.IsEntryBelowRarityFilter and self:IsEntryBelowRarityFilter(entry) then
         hideEntry = true
     end
 
@@ -2474,10 +2456,6 @@ function FWR:AddToDisplayBasket(classifiedEntry, quantity)
     self:RefreshDisplayText()
 end
 
-function FWR:AddOrUpdateDisplayEntry(classifiedEntry, quantity)
-    return self:AddToDisplayBasket(classifiedEntry, quantity)
-end
-
 function FWR:ResetDisplayQuantities()
     if self.ResetRenderStateQuantities then
         self:ResetRenderStateQuantities()
@@ -2790,18 +2768,6 @@ function FWR:GetMainRenderConfig()
     return config
 end
 
-function FWR:GetMainFrameTransparencyAlpha()
-    local display = self.Settings and self.Settings.display or {}
-    local transparency = math.max(0, math.min(100, tonumber(display.frameTransparency) or 50))
-    local alpha = 1 - (transparency / 100) * 0.8
-    if alpha < 0.2 then
-        alpha = 0.2
-    elseif alpha > 1 then
-        alpha = 1
-    end
-    return alpha
-end
-
 function FWR:ApplyDisplaySettings()
     local host = self.MainFrame and self.MainFrame.renderHost or nil
     if host then
@@ -2892,44 +2858,4 @@ function FWR:RefreshDisplayFilterButtonStates()
         local isVisible = self.IsOldExpansionVisible and self:IsOldExpansionVisible()
         secondaryHost.oldExpansionToggleButton:SetText(isVisible and "Show Old: ON" or "Show Old: OFF")
     end
-end
-
-function FWR:UpdateLegacyDisplayColumnLayout(frame)
-    return self:UpdateDisplayColumnLayout(frame)
-end
-
-function FWR:RenderLegacyDisplayRows(frame)
-    return self:RenderDisplayRows(frame)
-end
-
-function FWR:RefreshLegacyDisplayScrollMetrics(frame, keepScroll)
-    return self:RefreshDisplayScrollMetrics(frame, keepScroll)
-end
-
-function FWR:RefreshLegacyDisplayText()
-    return self:RefreshDisplayText()
-end
-
-function FWR:RefreshLegacyDisplayLiveMetrics(forceUpdate)
-    return self:RefreshDisplayLiveMetrics(forceUpdate)
-end
-
-function FWR:AddOrUpdateLegacyDisplayEntry(classifiedEntry, quantity)
-    return self:AddOrUpdateDisplayEntry(classifiedEntry, quantity)
-end
-
-function FWR:ResetLegacyDisplayQuantities()
-    return self:ResetDisplayQuantities()
-end
-
-function FWR:ClearLegacyDisplayEntries()
-    return self:ClearDisplayEntries()
-end
-
-function FWR:QueueLegacyDisplayRefreshes()
-    return self:QueueDisplayRefreshes()
-end
-
-function FWR:GetLegacyDisplayRenderConfig()
-    return self:GetDisplayRenderConfig()
 end

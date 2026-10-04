@@ -41,45 +41,17 @@ local CATEGORY_ORDER = CATEGORY_CONFIG.order or {
 }
 
 local INTERFACE_PAGE_CONFIG = PAGE_CONFIG.interface or {}
-local INTERFACE_OPTIONS = INTERFACE_PAGE_CONFIG.options or {
-    { key = "showMainWindowOnGameLoad", label = "Show main window when the game loads", defaultValue = true },
-    { key = "hideMainWindowInCombat", label = "Hide main window during combat", defaultValue = false },
-    { key = "hideControlPanelsInCombat", label = "Hide control panels during combat", defaultValue = false },
-    { key = "restoreControlPanelsAfterCombat", label = "Restore control panels after combat", defaultValue = true },
-    { key = "showMainFrameTooltips", label = "Show Main Frame Tooltips", defaultValue = true },
-}
+local INTERFACE_OPTIONS = INTERFACE_PAGE_CONFIG.options or {}
 
 local TRACKING_PAGE_CONFIG = PAGE_CONFIG.tracking or {}
-local TRACKING_OPTIONS = TRACKING_PAGE_CONFIG.options or {
-    { key = "showSpecializedClassifications", label = "Show Processing / Crafting Reagents", settingPath = { "displayFilters", "showSpecializedClassifications" }, defaultValue = false },
-    { key = "onlySpecializedClassifications", label = "Show Only Processing / Crafting Reagents", settingPath = { "displayFilters", "onlySpecializedClassifications" }, defaultValue = false },
-    { key = "combinedAllData", label = "Combined All Character Data", settingPath = { "tracking", "combinedAllData" }, defaultValue = false },
-    { key = "combinedCharacterAllZones", label = "All Current Character Data", settingPath = { "tracking", "combinedCharacterAllZones" }, defaultValue = false },
-    { key = "zoneData", label = "Zone Data", settingPath = { "tracking", "zoneData" }, defaultValue = true },
-    { key = "subZoneData", label = "Sub-Zone Data", settingPath = { "tracking", "subZoneData" }, defaultValue = false },
-    { key = "showOldExpansions", label = "Show Old Expansion Items", settingPath = { "displayFilters", "showOldExpansions" }, defaultValue = false },
-}
+local TRACKING_OPTIONS = TRACKING_PAGE_CONFIG.options or {}
 
-local CATEGORY_NOTES = CATEGORY_CONFIG.notes or {
-    interface = "Main window startup and control panel behavior.",
-    display = "Display columns, rows, and main background transparency.",
-    tracking = "Tracking filters, combined views, and current data scope.",
-    engine = "Internal timers, reset behavior, and rarity filter settings.",
-    data = "Saved data tools, cleanup actions, and rebuild utilities.",
-    info = "Addon commands, main window controls, and quick usage notes.",
-}
+local CATEGORY_NOTES = CATEGORY_CONFIG.notes or {}
 
 local CLEAR_ALL_DATA_POPUP_KEY = "FWR_CONTROL_PANEL_CLEAR_ALL_DATA"
-local REBUILD_SAVED_DATA_POPUP_KEY = "FWR_CONTROL_PANEL_REBUILD_SAVED_DATA"
 
 local ENGINE_PAGE_CONFIG = PAGE_CONFIG.engine or {}
-local ENGINE_RARITY_LEVEL_VALUES = ENGINE_PAGE_CONFIG.rarityLevels or {
-    { value = 0, label = "Poor+" },
-    { value = 1, label = "Common+" },
-    { value = 2, label = "Uncommon+" },
-    { value = 3, label = "Rare+" },
-    { value = 4, label = "Epic+" },
-}
+local ENGINE_RARITY_LEVEL_VALUES = ENGINE_PAGE_CONFIG.rarityLevels or {}
 
 local function formatQuarterHourLabel(totalMinutes)
     totalMinutes = math.max(0, math.min(1435, math.floor((tonumber(totalMinutes) or 0) / 15 + 0.5) * 15))
@@ -116,34 +88,12 @@ local function ensureClearAllDataPopup()
     end
 
     StaticPopupDialogs[CLEAR_ALL_DATA_POPUP_KEY] = {
-        text = "Erase all FarmWise saved data?\n\nThis cannot be undone.",
+        text = "Erase ALL FarmWise saved data?\n\nThis also deletes the statistics the Advisor uses. This cannot be undone.",
         button1 = YES,
         button2 = CANCEL,
         OnAccept = function()
             if FWR and FWR.ClearAllSavedData then
                 FWR:ClearAllSavedData()
-            end
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = STATICPOPUP_NUMDIALOGS,
-    }
-end
-
-local function ensureRebuildSavedDataPopup()
-    StaticPopupDialogs = StaticPopupDialogs or {}
-    if StaticPopupDialogs[REBUILD_SAVED_DATA_POPUP_KEY] then
-        return
-    end
-
-    StaticPopupDialogs[REBUILD_SAVED_DATA_POPUP_KEY] = {
-        text = "Rebuild saved item classification metadata?\n\nThis may take a moment on larger databases.",
-        button1 = YES,
-        button2 = CANCEL,
-        OnAccept = function()
-            if FWR and FWR.StartSavedDataRebuild then
-                FWR:StartSavedDataRebuild()
             end
         end,
         timeout = 0,
@@ -999,7 +949,7 @@ local function createEnginePage(parent)
     styleEngineCheck(localCheck, localResetConfig.label or "Local Session Reset")
 
     local localTimeSlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
-    localTimeSlider:SetPoint("LEFT", localCheck.Text, "RIGHT", localResetConfig.sliderX or 66, localResetConfig.sliderY or -1)
+    localTimeSlider:SetPoint("LEFT", localCheck, "LEFT", localResetConfig.sliderX or 190, localResetConfig.sliderY or -1)
     localTimeSlider:SetWidth(localResetConfig.sliderWidth or 130)
     localTimeSlider:SetMinMaxValues(0, 95)
     localTimeSlider:SetValueStep(1)
@@ -1020,7 +970,7 @@ local function createEnginePage(parent)
     styleEngineCheck(rarityCheck, rarityConfig.label or "Set Rarity Level")
 
     local raritySlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
-    raritySlider:SetPoint("LEFT", rarityCheck.Text, "RIGHT", rarityConfig.sliderX or 92, rarityConfig.sliderY or -1)
+    raritySlider:SetPoint("LEFT", rarityCheck, "LEFT", rarityConfig.sliderX or 190, rarityConfig.sliderY or -1)
     raritySlider:SetWidth(rarityConfig.sliderWidth or 130)
     raritySlider:SetMinMaxValues(1, #ENGINE_RARITY_LEVEL_VALUES)
     raritySlider:SetValueStep(1)
@@ -1198,60 +1148,10 @@ local function createDataPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints(parent)
 
-    local dataConfig = PAGE_CONFIG.data or {}
-    local rebuildConfig = dataConfig.rebuild or {}
-    local eraseConfig = dataConfig.erase or {}
-
-    local rebuildNote = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    rebuildNote:SetPoint("TOPLEFT", rebuildConfig.noteX or 0, rebuildConfig.noteY or -2)
-    rebuildNote:SetPoint("RIGHT", page, "RIGHT", -18, 0)
-    rebuildNote:SetJustifyH("LEFT")
-    rebuildNote:SetJustifyV("TOP")
-    rebuildNote:SetText(rebuildConfig.note or "")
-
-    local rebuildLabel = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rebuildLabel:SetPoint("TOPLEFT", rebuildNote, "BOTTOMLEFT", 0, rebuildConfig.labelOffsetY or -16)
-    rebuildLabel:SetTextColor(1, 1, 1, 1)
-    rebuildLabel:SetText(rebuildConfig.label or "Rebuild Saved Data")
-
-    local rebuildButton = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-    rebuildButton:SetSize(rebuildConfig.buttonWidth or 130, rebuildConfig.buttonHeight or 24)
-    rebuildButton:SetPoint("LEFT", rebuildLabel, "RIGHT", rebuildConfig.buttonOffsetX or 28, 0)
-    rebuildButton:SetText(rebuildConfig.buttonText or "Rebuild")
-    rebuildButton:SetScript("OnClick", function()
-        ensureRebuildSavedDataPopup()
-        if StaticPopup_Show then
-            StaticPopup_Show(REBUILD_SAVED_DATA_POPUP_KEY)
-        end
-    end)
-
-    local progressBar = CreateFrame("Frame", nil, page, "BackdropTemplate")
-    progressBar:SetSize(rebuildConfig.progressWidth or 260, rebuildConfig.progressHeight or 12)
-    progressBar:SetPoint("TOPLEFT", rebuildLabel, "BOTTOMLEFT", 0, rebuildConfig.progressOffsetY or -12)
-    progressBar:SetBackdrop({
-        bgFile = "Interface/Buttons/WHITE8X8",
-        edgeFile = "Interface/Buttons/WHITE8X8",
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 },
-    })
-    progressBar:SetBackdropColor(0.07, 0.07, 0.07, 0.85)
-    progressBar:SetBackdropBorderColor(0.32, 0.32, 0.32, 0.9)
-
-    local progressFill = progressBar:CreateTexture(nil, "ARTWORK")
-    progressFill:SetTexture("Interface/Buttons/WHITE8X8")
-    progressFill:SetPoint("TOPLEFT", progressBar, "TOPLEFT", 1, -1)
-    progressFill:SetPoint("BOTTOMLEFT", progressBar, "BOTTOMLEFT", 1, 1)
-    progressFill:SetWidth(0)
-    progressFill:SetColorTexture(0.78, 0.63, 0.18, 0.95)
-
-    local progressText = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    progressText:SetPoint("TOPLEFT", progressBar, "BOTTOMLEFT", 0, rebuildConfig.progressTextOffsetY or -6)
-    progressText:SetPoint("RIGHT", page, "RIGHT", -18, 0)
-    progressText:SetJustifyH("LEFT")
-    progressText:SetText("Ready")
+    local eraseConfig = (PAGE_CONFIG.data or {}).erase or {}
 
     local eraseNote = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    eraseNote:SetPoint("TOPLEFT", progressText, "BOTTOMLEFT", 0, eraseConfig.noteOffsetY or -22)
+    eraseNote:SetPoint("TOPLEFT", eraseConfig.noteX or 0, eraseConfig.noteY or -2)
     eraseNote:SetPoint("RIGHT", page, "RIGHT", -18, 0)
     eraseNote:SetJustifyH("LEFT")
     eraseNote:SetJustifyV("TOP")
@@ -1272,70 +1172,6 @@ local function createDataPage(parent)
             StaticPopup_Show(CLEAR_ALL_DATA_POPUP_KEY)
         end
     end)
-
-    function page:RefreshRebuildStatus()
-        local status = FWR.GetSavedDataRebuildStatus and FWR:GetSavedDataRebuildStatus() or nil
-        local percent = status and tonumber(status.percent) or 0
-        if percent < 0 then
-            percent = 0
-        elseif percent > 100 then
-            percent = 100
-        end
-
-        local width = math.floor((((rebuildConfig.progressWidth or 260) - 2) * percent) / 100)
-        if width < 0 then
-            width = 0
-        end
-        progressFill:SetWidth(width)
-
-        if status and status.text and status.text ~= "" then
-            progressText:SetText(status.text)
-        else
-            progressText:SetText("Ready")
-        end
-
-        local running = status and status.running == true
-        rebuildButton:SetEnabled(not running)
-        if running then
-            progressFill:SetColorTexture(0.78, 0.63, 0.18, 0.95)
-        elseif percent >= 100 then
-            progressFill:SetColorTexture(0.26, 0.72, 0.34, 0.95)
-        else
-            progressFill:SetColorTexture(0.78, 0.63, 0.18, 0.95)
-        end
-    end
-
-    page:SetScript("OnShow", function(self)
-        if self.RefreshRebuildStatus then
-            self:RefreshRebuildStatus()
-        end
-    end)
-    page:SetScript("OnUpdate", function(self, elapsed)
-        self._rebuildElapsed = (self._rebuildElapsed or 0) + (elapsed or 0)
-        if self._rebuildElapsed < 0.1 then
-            return
-        end
-        self._rebuildElapsed = 0
-        if self.RefreshRebuildStatus then
-            self:RefreshRebuildStatus()
-        end
-    end)
-
-    page:RefreshRebuildStatus()
-    return page
-end
-
-local function createPlaceholderPage(parent, note)
-    local page = CreateFrame("Frame", nil, parent)
-    page:SetAllPoints(parent)
-
-    page.text = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    page.text:SetPoint("TOPLEFT", 0, -2)
-    page.text:SetPoint("RIGHT", page, "RIGHT", -4, 0)
-    page.text:SetJustifyH("LEFT")
-    page.text:SetJustifyV("TOP")
-    page.text:SetTextColor(0.84, 0.84, 0.84)
-    page.text:SetText(note or "This section will be moved in a later pass.")
 
     return page
 end

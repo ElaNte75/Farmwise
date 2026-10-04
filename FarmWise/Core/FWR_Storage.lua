@@ -11,66 +11,6 @@ local function buildEmptyDatabase(now, dbVersion, buildName)
             resets = 0,
         },
 
-        schema = {
-            notes = {
-                "Core storage for FarmWise Reforged data.",
-                "Characters are stored in characters.byKey.",
-                "Items are stored in itemCatalog.byKey.",
-                "Recorded entries are stored in records.byID.",
-                "Summaries are stored in summaries.",
-                "Rejected non-tracked loot candidates are stored in rejectedLoot.",
-                "Gold summaries by source context are stored in goldLedger.",
-            },
-            characters = {
-                root = "characters.byKey[characterKey]",
-                purpose = "Character identity and character-linked tracking data.",
-            },
-            itemCatalog = {
-                root = "itemCatalog.byKey[itemKey]",
-                purpose = "Item identity catalog for tracked items.",
-            },
-            records = {
-                root = "records.byID[recordID]",
-                purpose = "Raw recorded entries.",
-                nextIDField = "records.nextID",
-            },
-            summaries = {
-                root = "summaries",
-                purpose = "Rolled-up data for display and advisor use.",
-            },
-            rejectedLoot = {
-                root = "rejectedLoot.byID[entryID]",
-                purpose = "Rejected but vendor-relevant loot ledger keyed by source context.",
-                nextIDField = "rejectedLoot.nextID",
-            },
-            goldLedger = {
-                root = "goldLedger.byContextKey[contextKey]",
-                purpose = "Gold summaries keyed by source context.",
-            },
-        },
-
-        characters = {
-            byKey = {},
-        },
-        itemCatalog = {
-            byKey = {},
-        },
-        records = {
-            nextID = 1,
-            byID = {},
-        },
-        summaries = {
-            characters = {},
-            items = {},
-            zones = {},
-            professions = {},
-        },
-        rejectedLoot = {
-            nextID = 1,
-            byID = {},
-            pendingByItemKey = {},
-            pendingByContextKey = {},
-        },
         goldLedger = {
             byContextKey = {},
         },
@@ -149,44 +89,17 @@ function FWR:EnsureDatabases()
     FarmWiseReforgedDB.meta.updatedAt = now
     FarmWiseReforgedDB.meta.resets = tonumber(FarmWiseReforgedDB.meta.resets) or 0
 
-    FarmWiseReforgedDB.schema = FarmWiseReforgedDB.schema or buildEmptyDatabase(now, self.DB_VERSION, self.BUILD_NAME).schema
-    FarmWiseReforgedDB.schema.rejectedLoot = FarmWiseReforgedDB.schema.rejectedLoot or {
-        root = "rejectedLoot.byID[entryID]",
-        purpose = "Rejected but vendor-relevant loot ledger keyed by source context.",
-        nextIDField = "rejectedLoot.nextID",
-    }
-    FarmWiseReforgedDB.schema.goldLedger = FarmWiseReforgedDB.schema.goldLedger or {
-        root = "goldLedger.byContextKey[contextKey]",
-        purpose = "Gold summaries keyed by source context.",
-    }
-    FarmWiseReforgedDB.characters = FarmWiseReforgedDB.characters or { byKey = {} }
-    FarmWiseReforgedDB.characters.byKey = FarmWiseReforgedDB.characters.byKey or {}
-    FarmWiseReforgedDB.itemCatalog = FarmWiseReforgedDB.itemCatalog or { byKey = {} }
-    FarmWiseReforgedDB.itemCatalog.byKey = FarmWiseReforgedDB.itemCatalog.byKey or {}
-    FarmWiseReforgedDB.records = FarmWiseReforgedDB.records or { nextID = 1, byID = {} }
-    FarmWiseReforgedDB.records.nextID = tonumber(FarmWiseReforgedDB.records.nextID) or 1
-    FarmWiseReforgedDB.records.byID = FarmWiseReforgedDB.records.byID or {}
-    FarmWiseReforgedDB.summaries = FarmWiseReforgedDB.summaries or {}
-    FarmWiseReforgedDB.summaries.characters = FarmWiseReforgedDB.summaries.characters or {}
-    FarmWiseReforgedDB.summaries.items = FarmWiseReforgedDB.summaries.items or {}
-    FarmWiseReforgedDB.summaries.zones = FarmWiseReforgedDB.summaries.zones or {}
-    FarmWiseReforgedDB.summaries.professions = FarmWiseReforgedDB.summaries.professions or {}
-    FarmWiseReforgedDB.rejectedLoot = FarmWiseReforgedDB.rejectedLoot or { nextID = 1, byID = {}, pendingByItemKey = {}, pendingByContextKey = {} }
-    FarmWiseReforgedDB.rejectedLoot.nextID = tonumber(FarmWiseReforgedDB.rejectedLoot.nextID) or 1
-    FarmWiseReforgedDB.rejectedLoot.byID = FarmWiseReforgedDB.rejectedLoot.byID or {}
-    FarmWiseReforgedDB.rejectedLoot.pendingByItemKey = FarmWiseReforgedDB.rejectedLoot.pendingByItemKey or {}
-    FarmWiseReforgedDB.rejectedLoot.pendingByContextKey = FarmWiseReforgedDB.rejectedLoot.pendingByContextKey or {}
     FarmWiseReforgedDB.goldLedger = FarmWiseReforgedDB.goldLedger or { byContextKey = {} }
     FarmWiseReforgedDB.goldLedger.byContextKey = FarmWiseReforgedDB.goldLedger.byContextKey or {}
     FarmWiseReforgedDB.renderState = FarmWiseReforgedDB.renderState or {}
     FarmWiseReforgedDB.renderState.displayBasketByContext = FarmWiseReforgedDB.renderState.displayBasketByContext or {}
     FarmWiseReforgedDB.renderState.currentContextKey = FarmWiseReforgedDB.renderState.currentContextKey or "__global"
 
-    local displayBasket = normalizeDisplayBasketAliases(FarmWiseReforgedDB.renderState)
+    normalizeDisplayBasketAliases(FarmWiseReforgedDB.renderState)
 
     FarmWiseReforgedSettingsDB = FWR:MergeDefaults(FarmWiseReforgedSettingsDB, FWR.DEFAULT_SETTINGS)
 
-    local displayFilters = normalizeDisplayFilterAliases(FarmWiseReforgedSettingsDB, FWR.DEFAULT_SETTINGS)
+    normalizeDisplayFilterAliases(FarmWiseReforgedSettingsDB, FWR.DEFAULT_SETTINGS)
 
     self.DB = FarmWiseReforgedDB
     self.Settings = FarmWiseReforgedSettingsDB
@@ -209,6 +122,8 @@ function FWR:ClearAllSavedData()
 
     self.DB = FarmWiseReforgedDB
 
+    self:Emit("dataCleared")
+
     if self.TouchDatabase then
         self:TouchDatabase()
     end
@@ -228,30 +143,4 @@ function FWR:ClearAllSavedData()
     end
 
     return self.DB
-end
-
-local function countKeys(root)
-    local total = 0
-    if type(root) ~= "table" then
-        return total
-    end
-    for _ in pairs(root) do
-        total = total + 1
-    end
-    return total
-end
-
-function FWR:GetStorageStatusSummary()
-    local db = self.DB or FarmWiseReforgedDB or {}
-    return {
-        characters = countKeys(db.characters and db.characters.byKey or nil),
-        items = countKeys(db.itemCatalog and db.itemCatalog.byKey or nil),
-        records = countKeys(db.records and db.records.byID or nil),
-        summaries = countKeys(db.summaries and db.summaries.items or nil)
-            + countKeys(db.summaries and db.summaries.characters or nil)
-            + countKeys(db.summaries and db.summaries.zones or nil)
-            + countKeys(db.summaries and db.summaries.professions or nil),
-        rejectedEntries = countKeys(db.rejectedLoot and db.rejectedLoot.byID or nil),
-        rejectedContexts = countKeys(db.rejectedLoot and db.rejectedLoot.pendingByContextKey or nil),
-    }
 end

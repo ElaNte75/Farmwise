@@ -38,7 +38,6 @@ local PAGE_CONFIG = CONTROL_PANEL_CONFIG and CONTROL_PANEL_CONFIG.page or {}
 
 local SETTINGS_CATEGORY_NAME = FRAME_CONFIG.categoryName or "FarmWise Reforged"
 local CLEAR_ALL_DATA_POPUP_KEY = "FWR_CONFIRM_CLEAR_ALL_DATA"
-local REBUILD_SAVED_DATA_POPUP_KEY = "FWR_CONFIRM_REBUILD_SAVED_DATA"
 
 local function ensureClearAllDataPopup()
     StaticPopupDialogs = StaticPopupDialogs or {}
@@ -47,34 +46,12 @@ local function ensureClearAllDataPopup()
     end
 
     StaticPopupDialogs[CLEAR_ALL_DATA_POPUP_KEY] = {
-        text = "Erase all FarmWise saved data?\n\nThis cannot be undone.",
+        text = "Erase ALL FarmWise saved data?\n\nThis also deletes the statistics the Advisor uses. This cannot be undone.",
         button1 = YES,
         button2 = CANCEL,
         OnAccept = function()
             if FWR and FWR.ClearAllSavedData then
                 FWR:ClearAllSavedData()
-            end
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = STATICPOPUP_NUMDIALOGS,
-    }
-end
-
-local function ensureRebuildSavedDataPopup()
-    StaticPopupDialogs = StaticPopupDialogs or {}
-    if StaticPopupDialogs[REBUILD_SAVED_DATA_POPUP_KEY] then
-        return
-    end
-
-    StaticPopupDialogs[REBUILD_SAVED_DATA_POPUP_KEY] = {
-        text = "Rebuild saved item classification metadata?\n\nThis may take a moment on larger databases.",
-        button1 = YES,
-        button2 = CANCEL,
-        OnAccept = function()
-            if FWR and FWR.StartSavedDataRebuild then
-                FWR:StartSavedDataRebuild()
             end
         end,
         timeout = 0,
@@ -477,7 +454,7 @@ local function createDisplaySectionPage(parent, section)
     rowSlider:SetObeyStepOnDrag(true)
     rowSlider:SetOrientation("HORIZONTAL")
     rowSlider:SetStepsPerPage(1)
-    rowSlider:SetThumbTexture("Interface\Buttons\UI-SliderBar-Button-Horizontal")
+    rowSlider:SetThumbTexture("Interface/Buttons/UI-SliderBar-Button-Horizontal")
     if rowSlider.Text then rowSlider.Text:SetText("") end
     if rowSlider.Low then
         rowSlider.Low:ClearAllPoints()
@@ -930,65 +907,12 @@ local function createDataSectionPage(parent, section)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints(parent)
 
-    local rebuildNote = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    rebuildNote:SetPoint("TOPLEFT", page, "TOPLEFT", 18, -20)
-    rebuildNote:SetPoint("RIGHT", page, "RIGHT", -20, 0)
-    rebuildNote:SetJustifyH("LEFT")
-    rebuildNote:SetJustifyV("TOP")
-    rebuildNote:SetText("Rebuild saved item metadata from the current database using the latest tracker rules.")
-
-    local rebuildLabel = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rebuildLabel:SetPoint("TOPLEFT", rebuildNote, "BOTTOMLEFT", 0, -18)
-    rebuildLabel:SetJustifyH("LEFT")
-    rebuildLabel:SetTextColor(1, 1, 1, 1)
-    rebuildLabel:SetText("Rebuild Saved Data")
-
-    local rebuildButton = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-    rebuildButton:SetSize(140, 24)
-    rebuildButton:SetPoint("LEFT", rebuildLabel, "RIGHT", 36, 0)
-    rebuildButton:SetText("Rebuild")
-    rebuildButton:SetScript("OnClick", function()
-        ensureRebuildSavedDataPopup()
-        if StaticPopup_Show then
-            StaticPopup_Show(REBUILD_SAVED_DATA_POPUP_KEY)
-        end
-    end)
-
-    local progressBarBackdrop = createBackdropFrame(page, {
-        enabled = true,
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 0,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 },
-        bgColor = { 0.07, 0.07, 0.07, 0.85 },
-        borderColor = { 0.32, 0.32, 0.32, 0.9 },
-        bgAlpha = 0.85,
-        borderAlpha = 0.9,
-    })
-    progressBarBackdrop:SetSize(260, 12)
-    progressBarBackdrop:SetPoint("TOPLEFT", rebuildLabel, "BOTTOMLEFT", 0, -12)
-
-    local progressFill = progressBarBackdrop:CreateTexture(nil, "ARTWORK")
-    progressFill:SetTexture("Interface\\Buttons\\WHITE8X8")
-    progressFill:SetPoint("TOPLEFT", progressBarBackdrop, "TOPLEFT", 1, -1)
-    progressFill:SetPoint("BOTTOMLEFT", progressBarBackdrop, "BOTTOMLEFT", 1, 1)
-    progressFill:SetWidth(0)
-    progressFill:SetColorTexture(0.78, 0.63, 0.18, 0.95)
-
-    local progressText = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    progressText:SetPoint("TOPLEFT", progressBarBackdrop, "BOTTOMLEFT", 0, -6)
-    progressText:SetPoint("RIGHT", page, "RIGHT", -20, 0)
-    progressText:SetJustifyH("LEFT")
-    progressText:SetText("Ready")
-
     local note = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    note:SetPoint("TOPLEFT", progressText, "BOTTOMLEFT", 0, -22)
+    note:SetPoint("TOPLEFT", page, "TOPLEFT", 18, -20)
     note:SetPoint("RIGHT", page, "RIGHT", -20, 0)
     note:SetJustifyH("LEFT")
     note:SetJustifyV("TOP")
-    note:SetText("Erase the full saved tracking database and start from the clean state. Settings stay as they are.")
+    note:SetText("Erase all saved FarmWise data: the main window data and the statistics the Advisor uses. Settings stay as they are. This cannot be undone.")
 
     local actionLabel = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     actionLabel:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -18)
@@ -1006,59 +930,6 @@ local function createDataSectionPage(parent, section)
             StaticPopup_Show(CLEAR_ALL_DATA_POPUP_KEY)
         end
     end)
-
-    local function refreshRebuildStatus()
-        local status = FWR.GetSavedDataRebuildStatus and FWR:GetSavedDataRebuildStatus() or nil
-        local percent = status and tonumber(status.percent) or 0
-        if percent < 0 then
-            percent = 0
-        elseif percent > 100 then
-            percent = 100
-        end
-
-        local width = math.floor((258 * percent) / 100)
-        if width < 0 then
-            width = 0
-        end
-        progressFill:SetWidth(width)
-
-        if status and status.text and status.text ~= "" then
-            progressText:SetText(status.text)
-        else
-            progressText:SetText("Ready")
-        end
-
-        local running = status and status.running == true
-        rebuildButton:SetEnabled(not running)
-        if running then
-            progressFill:SetColorTexture(0.78, 0.63, 0.18, 0.95)
-        elseif percent >= 100 then
-            progressFill:SetColorTexture(0.26, 0.72, 0.34, 0.95)
-        else
-            progressFill:SetColorTexture(0.78, 0.63, 0.18, 0.95)
-        end
-    end
-
-    page.RefreshRebuildStatus = refreshRebuildStatus
-    page:SetScript("OnShow", function(self)
-        if self.RefreshRebuildStatus then
-            self:RefreshRebuildStatus()
-        end
-    end)
-    page:SetScript("OnUpdate", function(self, elapsed)
-        self._rebuildElapsed = (self._rebuildElapsed or 0) + (elapsed or 0)
-        if self._rebuildElapsed < 0.1 then
-            return
-        end
-        self._rebuildElapsed = 0
-        if self.RefreshRebuildStatus then
-            self:RefreshRebuildStatus()
-        end
-    end)
-
-    if page.RefreshRebuildStatus then
-        page:RefreshRebuildStatus()
-    end
 
     return page
 end
@@ -1258,6 +1129,15 @@ local function collectManagedControlPanels(self)
     return panels
 end
 
+-- A canvas panel registered in the game's Settings window keeps its own "shown" flag set
+-- even while the Settings window is closed, so only what is really visible counts as open.
+local function isPanelOpen(panel)
+    if type(panel.IsVisible) == "function" then
+        return panel:IsVisible() == true
+    end
+    return panel:IsShown() == true
+end
+
 local function isPlayerInCombat()
     if type(InCombatLockdown) == "function" and InCombatLockdown() then
         return true
@@ -1326,7 +1206,7 @@ function FWR:ApplySettingsVisibilityRules(forceRefresh)
 
     if inCombat and ui.hideControlPanelsInCombat == true then
         for key, panel in pairs(managedPanels) do
-            if panel:IsShown() then
+            if isPanelOpen(panel) then
                 self.__fwrHiddenControlPanelsByCombat[key] = true
 
                 if key == "optionsPanel" or key == "settingsPanel" or key == "interfaceOptionsFrame" then

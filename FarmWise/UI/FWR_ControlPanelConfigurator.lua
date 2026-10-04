@@ -70,7 +70,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             display = "Display columns, rows, and main background transparency.",
             tracking = "Tracking filters, combined views, and current data scope.",
             engine = "Internal timers, reset behavior, and rarity filter settings.",
-            data = "Saved data tools, cleanup actions, and rebuild utilities.",
+            data = "Saved data tools.",
             info = "Addon commands, main window controls, and quick usage notes.",
         },
     },
@@ -87,7 +87,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             options = {
                 { key = "showMainWindowOnGameLoad", label = "Show main window when the game loads", defaultValue = true },
                 { key = "hideMainWindowInCombat", label = "Hide main window during combat", defaultValue = false },
-                { key = "hideControlPanelsInCombat", label = "Hide control panels during combat", defaultValue = false },
+                { key = "hideControlPanelsInCombat", label = "Hide control panels during combat", defaultValue = true },
                 { key = "restoreControlPanelsAfterCombat", label = "Restore control panels after combat", defaultValue = true },
                 { key = "showMainFrameTooltips", label = "Show Main Frame Tooltips", defaultValue = true },
             },
@@ -177,8 +177,8 @@ FWR.UI_CONFIG.ControlPanelWindow = {
                 { key = "onlySpecializedClassifications", label = "Show Only Processing / Crafting Reagents", settingPath = { "displayFilters", "onlySpecializedClassifications" }, defaultValue = false },
                 { key = "combinedAllData", label = "Combined All Character Data", settingPath = { "tracking", "combinedAllData" }, defaultValue = false },
                 { key = "combinedCharacterAllZones", label = "All Current Character Data", settingPath = { "tracking", "combinedCharacterAllZones" }, defaultValue = false },
-                { key = "zoneData", label = "Zone Data", settingPath = { "tracking", "zoneData" }, defaultValue = true },
-                { key = "subZoneData", label = "Sub-Zone Data", settingPath = { "tracking", "subZoneData" }, defaultValue = false },
+                { key = "zoneData", label = "Zone Data", settingPath = { "tracking", "zoneData" }, defaultValue = false },
+                { key = "subZoneData", label = "Sub-Zone Data", settingPath = { "tracking", "subZoneData" }, defaultValue = true },
                 { key = "showOldExpansions", label = "Show Old Expansion Items", settingPath = { "displayFilters", "showOldExpansions" }, defaultValue = false },
             },
         },
@@ -194,7 +194,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             manualReset = { label = "Manual Session Reset" },
             localReset = {
                 label = "Local Session Reset",
-                sliderX = 88,
+                sliderX = 190,
                 sliderY = -1,
                 sliderWidth = 130,
                 low = "00:00",
@@ -204,7 +204,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             },
             rarity = {
                 label = "Set Rarity Level",
-                sliderX = 92,
+                sliderX = 190,
                 sliderY = -1,
                 sliderWidth = 130,
                 valueTextX = 8,
@@ -220,24 +220,10 @@ FWR.UI_CONFIG.ControlPanelWindow = {
         },
 
         data = {
-            rebuild = {
-                note = "Rebuild saved item metadata from the current database using the latest tracker rules.",
+            erase = {
+                note = "Erase all saved FarmWise data: the main window data and the statistics the Advisor uses. Settings stay as they are. This cannot be undone.",
                 noteX = 0,
                 noteY = -2,
-                label = "Rebuild Saved Data",
-                labelOffsetY = -16,
-                buttonText = "Rebuild",
-                buttonWidth = 130,
-                buttonHeight = 24,
-                buttonOffsetX = 28,
-                progressOffsetY = -12,
-                progressWidth = 260,
-                progressHeight = 12,
-                progressTextOffsetY = -6,
-            },
-            erase = {
-                note = "Erase the full saved tracking database and start from the clean state. Settings stay as they are.",
-                noteOffsetY = -22,
                 label = "Erase Data",
                 labelOffsetY = -16,
                 buttonText = "Erase",
@@ -253,10 +239,11 @@ FWR.UI_CONFIG.ControlPanelWindow = {
                 x = 0,
                 y = -10,
                 rightInset = 18,
-                text = "/fwr ui - show or hide the main frame\n"
-                    .. "/fwr options - open the Blizzard options category\n"
-                    .. "/fwr status - print storage status in chat\n"
-                    .. "/fwr reset - clear all addon databases\n\n"
+                text = "/fw advisor - open the Advisor (best zones for an item or for gold)\n"
+                    .. "/fw sync - copy Auctionator prices for your tracked items (Auction House must be open)\n"
+                    .. "/fw ui - show or hide the main frame\n"
+                    .. "/fw options - open the options category\n"
+                    .. "/fw status - print storage status in chat\n\n"
                     .. "The launcher icon can also show or hide the main frame.",
             },
         },

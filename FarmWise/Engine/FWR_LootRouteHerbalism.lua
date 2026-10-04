@@ -59,11 +59,6 @@ local function getCurrentZoneName()
     return normalizeText(zone) or ""
 end
 
-local function getCurrentSubZoneName()
-    local subZone = type(GetSubZoneText) == "function" and GetSubZoneText() or nil
-    return normalizeText(subZone)
-end
-
 local function getSpellName(spellID)
     spellID = tonumber(spellID)
     if spellID and C_Spell and C_Spell.GetSpellName then
@@ -242,12 +237,6 @@ function FWR:RefreshHerbalismRouteState(now)
     local state = self:EnsureHerbalismRouteState()
     now = tonumber(now) or (GetTime and GetTime() or 0)
     if state.batchActive and state.batchExpiresAt and now >= state.batchExpiresAt then
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("HERBALISM", "trigger closed", {
-                "zone=" .. tostring(state.zoneName or "-"),
-                "outcome=expired",
-            })
-        end
         state.batchActive = false
         state.batchExpiresAt = nil
         state.zoneName = nil
@@ -282,14 +271,6 @@ function FWR:HandleHerbalismSpellcastStart(unitToken, castGUID, spellID)
 
     local zoneName = getCurrentZoneName()
     local canTakeOwnership = self.CanActivateIdleTrigger and self:CanActivateIdleTrigger("herbalism", self:Now()) or true
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("HERBALISM", "trigger opened", {
-            "spell=" .. tostring(spellName or "-"),
-            "spellID=" .. tostring(spellID or "-"),
-            "zone=" .. tostring(zoneName or "-"),
-            "canTakeOwnership=" .. tostring(canTakeOwnership),
-        })
-    end
 
     if not canTakeOwnership then
         return
@@ -333,12 +314,6 @@ function FWR:HandleHerbalismSpellcastCancelled(unitToken, castGUID, spellID, rea
 
     self:ClearHerbalismRouteState(false)
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("HERBALISM", "trigger closed", {
-            "outcome=" .. tostring(reasonText or "cancel"),
-            "spellID=" .. tostring(spellID or state.spellID or "-"),
-        })
-    end
 end
 
 function FWR:HandleHerbalismSpellcastSucceeded(unitToken, castGUID, spellID)
@@ -372,14 +347,6 @@ function FWR:HandleHerbalismSpellcastSucceeded(unitToken, castGUID, spellID)
     state.zoneName = zoneName
     state.lastSuccessAt = GetTime and GetTime() or 0
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("HERBALISM", "trigger success", {
-            "spell=" .. tostring(state.spellName or "-"),
-            "spellID=" .. tostring(state.spellID or spellID or "-"),
-            "zone=" .. tostring(zoneName or "-"),
-            "batchExpiresAt=" .. tostring(state.batchExpiresAt or "-"),
-        })
-    end
 end
 
 local function buildBaseCandidate(sourceStage)
@@ -504,12 +471,6 @@ function FWR:RouteHerbalismLoot(sourceStage, quantity)
     end
 
     if not result.passed then
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("HERBALISM", "item rejected", {
-                "item=" .. tostring(result.itemName or sourceStage.itemName or "-"),
-                "reason=" .. tostring(result.reason or "-"),
-            })
-        end
         return result, false
     end
 
@@ -522,23 +483,6 @@ function FWR:RouteHerbalismLoot(sourceStage, quantity)
         self:AddToDisplayBasket(result, quantity)
     end
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("HERBALISM", "item committed", {
-            "trigger=Herbalism",
-            "result=success",
-            "item=" .. tostring(result.itemName or "-"),
-            "quantity=" .. tostring(quantity or 1),
-            "classification=" .. tostring(result.itemTypeContext or "-"),
-            "professions=" .. tostring(result.baseProfession or "-"),
-            "character=" .. tostring(result.characterKey or "-"),
-            "tradeMaterial=" .. tostring(result.isTradeMaterial),
-            "ahValid=" .. tostring(result.isAuctionHouseValid),
-            "expansion=" .. tostring(result.expansionCategory or "-"),
-            "storedIn=display_basket",
-            "zone=" .. tostring(result.zoneName or "-"),
-            "subzone=-",
-        })
-    end
 
     return result, false
 end

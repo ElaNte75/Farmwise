@@ -110,11 +110,6 @@ function FWR:GetActiveAcquisitionContext()
     }
 end
 
-function FWR:GetActiveAcquisitionClassification()
-    local ctx = self:GetActiveAcquisitionContext()
-    return ctx and ctx.activityContext or nil
-end
-
 
 local function normalizeItemName(value)
     if type(value) ~= "string" then
@@ -279,34 +274,6 @@ function FWR:SetOnlySpecializedClassificationVisible(isVisible)
     end
 end
 
-function FWR:ToggleSpecializedClassificationVisible()
-    local nextValue = not self:IsSpecializedClassificationVisible()
-    self:SetSpecializedClassificationVisible(nextValue)
-    if self.RefreshDisplayFilterButtonStates then
-        self:RefreshDisplayFilterButtonStates()
-    end
-    if self.QueueDisplayRefreshes then
-        self:QueueDisplayRefreshes()
-    elseif self.RefreshDisplayText then
-        self:RefreshDisplayText()
-    end
-    return nextValue
-end
-
-function FWR:ToggleOnlySpecializedClassificationVisible()
-    local nextValue = not self:IsOnlySpecializedClassificationVisible()
-    self:SetOnlySpecializedClassificationVisible(nextValue)
-    if self.RefreshDisplayFilterButtonStates then
-        self:RefreshDisplayFilterButtonStates()
-    end
-    if self.QueueDisplayRefreshes then
-        self:QueueDisplayRefreshes()
-    elseif self.RefreshDisplayText then
-        self:RefreshDisplayText()
-    end
-    return nextValue
-end
-
 local function resolveTrackingSettings(settings)
     settings = type(settings) == "table" and settings or {}
     local tracking = settings.tracking or {}
@@ -388,18 +355,6 @@ function FWR:SetSubZoneDataEnabled(isEnabled)
     end
 end
 
-function FWR:ToggleZoneDataEnabled()
-    local nextValue = not self:IsZoneDataEnabled()
-    self:SetZoneDataEnabled(nextValue)
-    return self:IsZoneDataEnabled()
-end
-
-function FWR:ToggleSubZoneDataEnabled()
-    local nextValue = not self:IsSubZoneDataEnabled()
-    self:SetSubZoneDataEnabled(nextValue)
-    return self:IsSubZoneDataEnabled()
-end
-
 refreshTrackingDisplay = function(self)
     if self.TouchDatabase then
         self:TouchDatabase()
@@ -420,8 +375,8 @@ function FWR:SetCombinedAllDataEnabled(isEnabled)
         tracking.zoneData = false
         tracking.subZoneData = false
     elseif tracking.combinedCharacterAllZones ~= true then
-        tracking.zoneData = true
-        tracking.subZoneData = false
+        tracking.zoneData = false
+        tracking.subZoneData = true
     end
     refreshTrackingDisplay(self)
     if self.RefreshIdleZoneInfo then
@@ -441,8 +396,8 @@ function FWR:SetCombinedCharacterAllZonesEnabled(isEnabled)
         tracking.zoneData = false
         tracking.subZoneData = false
     elseif tracking.combinedAllData ~= true then
-        tracking.zoneData = true
-        tracking.subZoneData = false
+        tracking.zoneData = false
+        tracking.subZoneData = true
     end
     refreshTrackingDisplay(self)
     if self.RefreshIdleZoneInfo then
@@ -451,16 +406,4 @@ function FWR:SetCombinedCharacterAllZonesEnabled(isEnabled)
     if self.SyncRenderStateToCurrentContext then
         self:SyncRenderStateToCurrentContext()
     end
-end
-
-function FWR:ToggleCombinedAllDataEnabled()
-    local nextValue = not self:IsCombinedAllDataEnabled()
-    self:SetCombinedAllDataEnabled(nextValue)
-    return nextValue
-end
-
-function FWR:ToggleCombinedCharacterAllZonesEnabled()
-    local nextValue = not self:IsCombinedCharacterAllZonesEnabled()
-    self:SetCombinedCharacterAllZonesEnabled(nextValue)
-    return nextValue
 end

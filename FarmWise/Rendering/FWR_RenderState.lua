@@ -88,10 +88,6 @@ function FWR:GetDisplayBasket()
     return self:EnsureRenderState()
 end
 
-function FWR:GetRenderDisplayBasket()
-    return self:GetDisplayBasket()
-end
-
 
 function FWR:ResetRenderStateQuantities()
     local basket = self:EnsureRenderState()

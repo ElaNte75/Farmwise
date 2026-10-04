@@ -54,11 +54,6 @@ local function detectSourceContext(itemInfo)
         return "herbalism", true, "accepted_herbalism_trigger"
     end
 
-    local combatState = FWR.GetCombatRouteSourceState and FWR:GetCombatRouteSourceState() or nil
-    if type(combatState) == "table" then
-        return "combat", true, "accepted_combat_pending"
-    end
-
     return "combat", true, "accepted_loot_event"
 end
 

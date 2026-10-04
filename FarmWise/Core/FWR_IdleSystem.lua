@@ -1,7 +1,6 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
-local GRACE_SECONDS = 30
 local GATHER_TRIGGER_GRACE_SECONDS = 45
 local SKINNING_TRIGGER_GRACE_SECONDS = 30
 
@@ -174,13 +173,6 @@ function FWR:RefreshIdleTriggerState(now)
 
         local deadline = tonumber(state.gatherDeadline)
         if not deadline or now >= deadline then
-            if self.AppendDebugTrace and state.activeTriggerOwner then
-                self:AppendDebugTrace("IDLE", "gather owner expired", {
-                    "owner=" .. tostring(state.activeTriggerOwner),
-                    "modeBefore=" .. tostring(state.mode),
-                    "contextKey=" .. tostring(state.current and state.current.key or "-"),
-                })
-            end
             clearGatherTriggerState(state)
             if not state.inCombat and type(state.graceDeadline) ~= "number" then
                 state.mode = "IDLE"
@@ -234,13 +226,6 @@ function FWR:BeginIdleGatherCast(owner, options)
     local activeOwner = state.activeTriggerOwner
     if activeOwner and activeOwner ~= owner then
         if not self:CanActivateIdleTrigger(owner, now) then
-            if self.AppendDebugTrace then
-                self:AppendDebugTrace("IDLE", "gather cast blocked", {
-                    "requested=" .. tostring(owner),
-                    "activeOwner=" .. tostring(activeOwner),
-                    "mode=" .. tostring(state.mode),
-                })
-            end
             return false
         end
 
@@ -269,12 +254,6 @@ function FWR:BeginIdleGatherCast(owner, options)
     state.gatherContextKey = state.current and state.current.key or nil
     state.mode = "ACTIVE"
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("IDLE", "gather cast started", {
-            "owner=" .. tostring(owner),
-            "contextKey=" .. tostring(state.gatherContextKey or "-"),
-        })
-    end
     return true
 end
 
@@ -291,13 +270,6 @@ function FWR:ConfirmIdleGatherSuccess(owner, durationSeconds, options)
     local activeOwner = state.activeTriggerOwner
     if activeOwner and activeOwner ~= owner then
         if not self:CanActivateIdleTrigger(owner, now) then
-            if self.AppendDebugTrace then
-                self:AppendDebugTrace("IDLE", "gather success blocked", {
-                    "requested=" .. tostring(owner),
-                    "activeOwner=" .. tostring(activeOwner),
-                    "mode=" .. tostring(state.mode),
-                })
-            end
             return false
         end
 
@@ -325,13 +297,6 @@ function FWR:ConfirmIdleGatherSuccess(owner, durationSeconds, options)
     state.gatherContextKey = state.current and state.current.key or nil
     state.mode = "GRACE"
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("IDLE", "gather grace started", {
-            "owner=" .. tostring(owner),
-            "contextKey=" .. tostring(state.gatherContextKey or "-"),
-            "deadline=" .. tostring(state.gatherDeadline),
-        })
-    end
     return true
 end
 
@@ -363,14 +328,6 @@ function FWR:CancelIdleGatherCast(owner)
     state.lastUpdateAt = now
     self:RefreshIdleZoneInfo()
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("IDLE", "gather cast cleared", {
-            "owner=" .. tostring(owner),
-            "mode=" .. tostring(state.mode),
-            "clearedCast=" .. tostring(wasCastActive),
-            "clearedGrace=" .. tostring(wasGraceActive),
-        })
-    end
     return true
 end
 
@@ -536,39 +493,14 @@ function FWR:GetIdleCurrentTotalSeconds()
     return context and (context.totalSeconds or 0) or 0
 end
 
-function FWR:GetIdleCurrentSessionSeconds()
-    local context = self:GetIdleCurrentContext()
-    return context and (context.sessionSeconds or 0) or 0
-end
-
-function FWR:GetLiveTotalTimeText()
-    local context = self:GetIdleCurrentContext()
-    return "Total: " .. formatClock(context and context.totalSeconds or 0)
-end
-
 function FWR:GetLiveTotalTimeValueText()
     local context = self:GetIdleCurrentContext()
     return formatClock(context and context.totalSeconds or 0)
 end
 
-function FWR:GetLiveSessionTimeText()
-    local context = self:GetIdleCurrentContext()
-    return "Session: " .. formatClock(context and context.sessionSeconds or 0)
-end
-
 function FWR:GetLiveSessionTimeValueText()
     local context = self:GetIdleCurrentContext()
     return formatClock(context and context.sessionSeconds or 0)
-end
-
-function FWR:ResetCurrentSessionTimer()
-    self:ApplyIdleElapsed(self:Now())
-    local context = self:GetIdleCurrentContext()
-    if context then
-        context.sessionSeconds = 0
-        self:TouchDatabase()
-    end
-    return context
 end
 
 function FWR:GetIdleIndicatorText()

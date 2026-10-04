@@ -1,17 +1,7 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
-local DEFAULT_COMBAT_GRACE_SECONDS = 30
-
-local function getCombatGraceSeconds()
-    local defaults = FWR.DEFAULTS or {}
-    local idleDefaults = defaults.idleSystem or {}
-    local configured = tonumber(idleDefaults.combatGraceSeconds)
-    if configured and configured > 0 then
-        return configured
-    end
-    return DEFAULT_COMBAT_GRACE_SECONDS
-end
+local COMBAT_GRACE_SECONDS = 30
 
 function FWR:HandleIdleCombatStart()
     if self.ApplyIdleElapsed then
@@ -37,13 +27,6 @@ function FWR:HandleIdleCombatStart()
         self:ClearSkinningRouteState(true)
     end
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("COMBAT", "combat started", {
-            "canTakeOwnership=" .. tostring(canTakeOwnership),
-            "activeOwner=" .. tostring(state.activeTriggerOwner),
-            "contextKey=" .. tostring(state.current and state.current.key or "-"),
-        })
-    end
 
     if self.RefreshMainWindowText then
         self:RefreshMainWindowText()
@@ -58,20 +41,13 @@ function FWR:HandleIdleCombatEnd()
     local state = self:EnsureIdleSystemState()
     state.inCombat = false
     local now = self:Now()
-    state.graceDeadline = now + getCombatGraceSeconds()
+    state.graceDeadline = now + COMBAT_GRACE_SECONDS
     state.graceContextKey = state.current and state.current.key or nil
     if state.activeTriggerOwner == "combat" then
         state.activeTriggerOwner = nil
     end
     state.mode = "GRACE"
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("COMBAT", "combat ended", {
-            "graceDeadline=" .. tostring(state.graceDeadline),
-            "activeOwner=" .. tostring(state.activeTriggerOwner),
-            "contextKey=" .. tostring(state.current and state.current.key or "-"),
-        })
-    end
 
     if self.RefreshMainWindowText then
         self:RefreshMainWindowText()

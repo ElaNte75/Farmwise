@@ -59,11 +59,6 @@ local function getCurrentZoneName()
     return normalizeText(zone) or ""
 end
 
-local function getCurrentSubZoneName()
-    local subZone = type(GetSubZoneText) == "function" and GetSubZoneText() or nil
-    return normalizeText(subZone)
-end
-
 local function getSpellName(spellID)
     spellID = tonumber(spellID)
     if spellID and C_Spell and C_Spell.GetSpellName then
@@ -272,12 +267,6 @@ function FWR:RefreshMiningRouteState(now)
     local state = self:EnsureMiningRouteState()
     now = tonumber(now) or (GetTime and GetTime() or 0)
     if state.batchActive and state.batchExpiresAt and now >= state.batchExpiresAt then
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("MINING", "trigger closed", {
-                "zone=" .. tostring(state.zoneName or "-"),
-                "outcome=expired",
-            })
-        end
         state.batchActive = false
         state.batchExpiresAt = nil
         state.zoneName = nil
@@ -312,14 +301,6 @@ function FWR:HandleMiningSpellcastStart(unitToken, castGUID, spellID)
 
     local zoneName = getCurrentZoneName()
     local canTakeOwnership = self.CanActivateIdleTrigger and self:CanActivateIdleTrigger("mining", self:Now()) or true
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("MINING", "trigger opened", {
-            "spell=" .. tostring(spellName or "-"),
-            "spellID=" .. tostring(spellID or "-"),
-            "zone=" .. tostring(zoneName or "-"),
-            "canTakeOwnership=" .. tostring(canTakeOwnership),
-        })
-    end
 
     if not canTakeOwnership then
         return
@@ -363,12 +344,6 @@ function FWR:HandleMiningSpellcastCancelled(unitToken, castGUID, spellID, reason
 
     self:ClearMiningRouteState(false)
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("MINING", "trigger closed", {
-            "outcome=" .. tostring(reasonText or "cancel"),
-            "spellID=" .. tostring(spellID or state.spellID or "-"),
-        })
-    end
 end
 
 function FWR:HandleMiningSpellcastSucceeded(unitToken, castGUID, spellID)
@@ -402,14 +377,6 @@ function FWR:HandleMiningSpellcastSucceeded(unitToken, castGUID, spellID)
     state.zoneName = zoneName
     state.lastSuccessAt = GetTime and GetTime() or 0
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("MINING", "trigger success", {
-            "spell=" .. tostring(state.spellName or "-"),
-            "spellID=" .. tostring(state.spellID or spellID or "-"),
-            "zone=" .. tostring(zoneName or "-"),
-            "batchExpiresAt=" .. tostring(state.batchExpiresAt or "-"),
-        })
-    end
 end
 
 local function buildBaseCandidate(sourceStage)
@@ -534,12 +501,6 @@ function FWR:RouteMiningLoot(sourceStage, quantity)
     end
 
     if not result.passed then
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("MINING", "item rejected", {
-                "item=" .. tostring(result.itemName or sourceStage.itemName or "-"),
-                "reason=" .. tostring(result.reason or "-"),
-            })
-        end
         return result, false
     end
 
@@ -552,23 +513,6 @@ function FWR:RouteMiningLoot(sourceStage, quantity)
         self:AddToDisplayBasket(result, quantity)
     end
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("MINING", "item committed", {
-            "trigger=Mining",
-            "result=success",
-            "item=" .. tostring(result.itemName or "-"),
-            "quantity=" .. tostring(quantity or 1),
-            "classification=" .. tostring(result.itemTypeContext or "-"),
-            "professions=" .. tostring(result.baseProfession or "-"),
-            "character=" .. tostring(result.characterKey or "-"),
-            "tradeMaterial=" .. tostring(result.isTradeMaterial),
-            "ahValid=" .. tostring(result.isAuctionHouseValid),
-            "expansion=" .. tostring(result.expansionCategory or "-"),
-            "storedIn=display_basket",
-            "zone=" .. tostring(result.zoneName or "-"),
-            "subzone=-",
-        })
-    end
 
     return result, false
 end

@@ -61,11 +61,6 @@ local function getCurrentZoneName()
     return normalizeText(zone) or ""
 end
 
-local function getCurrentSubZoneName()
-    local subZone = type(GetSubZoneText) == "function" and GetSubZoneText() or nil
-    return normalizeText(subZone)
-end
-
 local function getSpellName(spellID)
     spellID = tonumber(spellID)
     if spellID and C_Spell and C_Spell.GetSpellName then
@@ -297,12 +292,6 @@ function FWR:RefreshFishingRouteState(now)
             if self.CancelIdleGatherCast then
                 self:CancelIdleGatherCast("fishing")
             end
-            if self.AppendDebugTrace then
-                self:AppendDebugTrace("FISHING", "pending stop resolved as cancel", {
-                    "zone=" .. tostring(state.zoneName or "-"),
-                    "outcome=" .. tostring(state.stopPendingReason or "stop_pending_timeout"),
-                })
-            end
             self:ClearFishingRouteState(true)
             return state
         end
@@ -313,12 +302,6 @@ function FWR:RefreshFishingRouteState(now)
             if self.CancelIdleGatherCast then
                 self:CancelIdleGatherCast("fishing")
             end
-            if self.AppendDebugTrace then
-                self:AppendDebugTrace("FISHING", "trigger closed", {
-                    "zone=" .. tostring(state.zoneName or "-"),
-                    "outcome=" .. tostring(cancelReason or "player_state_cancel"),
-                })
-            end
             self:ClearFishingRouteState(true)
             return state
         end
@@ -327,12 +310,6 @@ function FWR:RefreshFishingRouteState(now)
     if state.batchActive and state.batchExpiresAt and now >= state.batchExpiresAt then
         if self.CancelIdleGatherCast then
             self:CancelIdleGatherCast("fishing")
-        end
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("FISHING", "trigger closed", {
-                "zone=" .. tostring(state.zoneName or "-"),
-                "outcome=expired",
-            })
         end
         state.batchActive = false
         state.batchExpiresAt = nil
@@ -368,14 +345,6 @@ function FWR:HandleFishingSpellcastStart(unitToken, castGUID, spellID)
 
     local zoneName = getCurrentZoneName()
     local canTakeOwnership = self.CanActivateIdleTrigger and self:CanActivateIdleTrigger("fishing", self:Now()) or true
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("FISHING", "trigger opened", {
-            "spell=" .. tostring(spellName or "-"),
-            "spellID=" .. tostring(spellID or "-"),
-            "zone=" .. tostring(zoneName or "-"),
-            "canTakeOwnership=" .. tostring(canTakeOwnership),
-        })
-    end
 
     if not canTakeOwnership then
         return
@@ -424,12 +393,6 @@ function FWR:HandleFishingSpellcastCancelled(unitToken, castGUID, spellID, reaso
                 self:CancelIdleGatherCast("fishing")
             end
             self:ClearFishingRouteState(true)
-            if self.AppendDebugTrace then
-                self:AppendDebugTrace("FISHING", "loot wait cancelled", {
-                    "outcome=" .. outcome,
-                    "spellID=" .. tostring(spellID or state.spellID or "-"),
-                })
-            end
             return
         end
 
@@ -440,49 +403,18 @@ function FWR:HandleFishingSpellcastCancelled(unitToken, castGUID, spellID, reaso
                     self:CancelIdleGatherCast("fishing")
                 end
                 self:ClearFishingRouteState(true)
-                if self.AppendDebugTrace then
-                    self:AppendDebugTrace("FISHING", "loot wait cancelled by stop", {
-                        "outcome=" .. outcome,
-                        "cancelReason=" .. tostring(cancelReason or "player_state_cancel"),
-                        "spellID=" .. tostring(spellID or state.spellID or "-"),
-                        "secondsSinceSuccess=" .. tostring(secondsSinceSuccess),
-                    })
-                end
                 return
             end
 
             if secondsSinceSuccess > FISHING_STOP_IGNORE_AFTER_SUCCESS_SECONDS then
                 state.stopPendingUntil = now + FISHING_STOP_PENDING_CANCEL_SECONDS
                 state.stopPendingReason = outcome
-                if self.AppendDebugTrace then
-                    self:AppendDebugTrace("FISHING", "pending stop opened", {
-                        "outcome=" .. outcome,
-                        "spellID=" .. tostring(spellID or state.spellID or "-"),
-                        "secondsSinceSuccess=" .. tostring(secondsSinceSuccess),
-                        "pendingUntil=" .. tostring(state.stopPendingUntil),
-                    })
-                end
                 return
             end
 
-            if self.AppendDebugTrace then
-                self:AppendDebugTrace("FISHING", "stop ignored during loot wait", {
-                    "outcome=" .. outcome,
-                    "spellID=" .. tostring(spellID or state.spellID or "-"),
-                    "secondsSinceSuccess=" .. tostring(secondsSinceSuccess),
-                    "batchExpiresAt=" .. tostring(state.batchExpiresAt or "-"),
-                })
-            end
             return
         end
 
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("FISHING", "non-cancel stop ignored during loot wait", {
-                "outcome=" .. outcome,
-                "spellID=" .. tostring(spellID or state.spellID or "-"),
-                "batchExpiresAt=" .. tostring(state.batchExpiresAt or "-"),
-            })
-        end
         return
     end
 
@@ -497,12 +429,6 @@ function FWR:HandleFishingSpellcastCancelled(unitToken, castGUID, spellID, reaso
 
     self:ClearFishingRouteState(false)
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("FISHING", "trigger closed", {
-            "outcome=" .. tostring(reasonText or "cancel"),
-            "spellID=" .. tostring(spellID or state.spellID or "-"),
-        })
-    end
 end
 
 function FWR:HandleFishingSpellcastSucceeded(unitToken, castGUID, spellID)
@@ -525,14 +451,6 @@ function FWR:HandleFishingSpellcastSucceeded(unitToken, castGUID, spellID)
     state.stopPendingUntil = nil
     state.stopPendingReason = nil
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("FISHING", "loot wait started", {
-            "spell=" .. tostring(state.spellName or "-"),
-            "spellID=" .. tostring(state.spellID or spellID or "-"),
-            "zone=" .. tostring(zoneName or "-"),
-            "batchExpiresAt=" .. tostring(state.batchExpiresAt or "-"),
-        })
-    end
 end
 
 local function buildBaseCandidate(sourceStage)
@@ -664,12 +582,6 @@ function FWR:RouteFishingLoot(sourceStage, quantity)
     end
 
     if not result.passed then
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("FISHING", "item rejected", {
-                "item=" .. tostring(result.itemName or sourceStage.itemName or "-"),
-                "reason=" .. tostring(result.reason or "-"),
-            })
-        end
         return result, false
     end
 
@@ -693,31 +605,8 @@ function FWR:RouteFishingLoot(sourceStage, quantity)
 
     if state.batchActive then
         self:ClearFishingRouteState(true)
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("FISHING", "loot wait committed to idle grace", {
-                "zone=" .. tostring(committedZoneName or "-"),
-                "nextMode=grace",
-            })
-        end
     end
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("FISHING", "item committed", {
-            "trigger=Fishing",
-            "result=success",
-            "item=" .. tostring(result.itemName or "-"),
-            "quantity=" .. tostring(quantity or 1),
-            "classification=" .. tostring(result.itemTypeContext or "-"),
-            "professions=" .. tostring(result.baseProfession or "-"),
-            "character=" .. tostring(result.characterKey or "-"),
-            "tradeMaterial=" .. tostring(result.isTradeMaterial),
-            "ahValid=" .. tostring(result.isAuctionHouseValid),
-            "expansion=" .. tostring(result.expansionCategory or "-"),
-            "storedIn=display_basket",
-            "zone=" .. tostring(result.zoneName or "-"),
-            "subzone=-",
-        })
-    end
 
     return result, false
 end

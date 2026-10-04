@@ -32,15 +32,11 @@ end
 
 
 local function printStatus()
-    local summary = FWR:GetStorageStatusSummary()
+    local status = FWR:GetAdvisorStatus()
     print(string.format(
-        "|cffd7be6aFarmWise Reforged|r tracking system ready - Characters: %d, Items: %d, Records: %d, Summary Buckets: %d, Rejected Ledger: %d entries / %d contexts",
-        summary.characters,
-        summary.items,
-        summary.records,
-        summary.summaries,
-        summary.rejectedEntries or 0,
-        summary.rejectedContexts or 0
+        "|cffd7be6aFarmWise|r ready - Advisor data: %d zones, %d tracked items. Type /fw advisor to open the Advisor.",
+        status.zones,
+        status.items
     ))
 end
 
@@ -95,7 +91,6 @@ function FWR:ResetSessionForScope(scope)
         local goldContext = self.DB.goldLedger.byContextKey[contextKey]
         if type(goldContext) == "table" then
             goldContext.rawLootCopperSession = 0
-            goldContext.vendorSoldCopperSession = 0
             goldContext.updatedAt = self:Now()
         end
     end
@@ -164,18 +159,6 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "CHAT_MSG_MONEY" then
         if FWR.HandleLootMoneyChatMessage then
             FWR:HandleLootMoneyChatMessage(...)
-        end
-    elseif event == "MERCHANT_SHOW" then
-        if FWR.HandleMerchantShow then
-            FWR:HandleMerchantShow(...)
-        end
-    elseif event == "MERCHANT_CLOSED" then
-        if FWR.HandleMerchantClosed then
-            FWR:HandleMerchantClosed(...)
-        end
-    elseif event == "BAG_UPDATE_DELAYED" then
-        if FWR.HandleVendorBagUpdateDelayed then
-            FWR:HandleVendorBagUpdateDelayed(...)
         end
     elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" then
         if FWR.HandleHerbalismSpellcastStart then
@@ -291,6 +274,7 @@ frame:SetScript("OnUpdate", function(_, _)
     if FWR.UpdateIdleSystem then
         FWR:UpdateIdleSystem(FWR:Now())
     end
+    FWR:TickSessionReset()
     if FWR.ApplySettingsVisibilityRules then
         local inCombat = false
         if type(InCombatLockdown) == "function" and InCombatLockdown() then
@@ -316,6 +300,9 @@ end)
 FWR:Subscribe("lootMoneyRecorded", function(copper)
     FWR:RecordAdvisorGold(copper)
 end)
+FWR:Subscribe("dataCleared", function()
+    FWR:ClearAdvisorData()
+end)
 
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
@@ -323,9 +310,6 @@ frame:RegisterEvent("AUCTION_HOUSE_SHOW")
 frame:RegisterEvent("AUCTION_HOUSE_CLOSED")
 frame:RegisterEvent("CHAT_MSG_LOOT")
 frame:RegisterEvent("CHAT_MSG_MONEY")
-frame:RegisterEvent("BAG_UPDATE_DELAYED")
-frame:RegisterEvent("MERCHANT_CLOSED")
-frame:RegisterEvent("MERCHANT_SHOW")
 frame:RegisterEvent("UNIT_SPELLCAST_START")
 frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
 frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
@@ -377,20 +361,5 @@ SlashCmdList.FARMWISEREFORGED = function(message)
         return
     end
 
-    if command == "reset" then
-        local resets = 0
-        if type(FarmWiseReforgedDB) == "table" and type(FarmWiseReforgedDB.meta) == "table" then
-            resets = tonumber(FarmWiseReforgedDB.meta.resets) or 0
-        end
-        FarmWiseReforgedDB = nil
-        FarmWiseReforgedSettingsDB = nil
-        FWR.DB = nil
-        FWR.Settings = nil
-        FWR:EnsureDatabases()
-        FWR.DB.meta.resets = resets + 1
-        print("|cffd7be6aFarmWise Reforged|r storage reset complete.")
-        return
-    end
-
-    print("|cffd7be6aFarmWise|r commands: /fw advisor, /fw sync, /fw ui, /fw options, /fw status, /fw reset")
+    print("|cffd7be6aFarmWise|r commands: /fw advisor, /fw sync, /fw ui, /fw options, /fw status")
 end

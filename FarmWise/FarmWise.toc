@@ -11,12 +11,13 @@ Core/FWR_Events.lua
 Core/FWR_Storage.lua
 Core/FWR_AdvisorStore.lua
 Core/FWR_AuctionSync.lua
+Core/FWR_RarityFilter.lua
+Core/FWR_SessionReset.lua
 Core/FWR_CharacterScope.lua
 Core/FWR_IdleSystem.lua
 Core/FWR_IdleCombatTrigger.lua
 Core/FWR_GoldLedger.lua
 Core/FWR_TooltipSystem.lua
-Core/FWR_SavedDataRebuilder.lua
 Engine/FWR_SourceFilter.lua
 Engine/FWR_AcquisitionContext.lua
 Engine/FWR_LootRouteLoot.lua
@@ -25,8 +26,6 @@ Engine/FWR_LootRouteMining.lua
 Engine/FWR_LootRouteFishing.lua
 Engine/FWR_LootRouteSkinning.lua
 Engine/FWR_LootRouteCombat.lua
-Engine/FWR_DisplayBasket.lua
-Engine/FWR_RejectedLootLedger.lua
 Engine/FWR_LootHandler.lua
 Rendering/FWR_RenderConfigurator.lua
 Rendering/FWR_RenderState.lua

@@ -627,18 +627,6 @@ function FWR:SetOldExpansionVisible(isVisible)
     end
 end
 
-function FWR:ToggleOldExpansionVisible()
-    local nextValue = not self:IsOldExpansionVisible()
-    self:SetOldExpansionVisible(nextValue)
-    if self.RefreshDisplayFilterButtonStates then
-        self:RefreshDisplayFilterButtonStates()
-    end
-    if self.RefreshDisplayText then
-        self:RefreshDisplayText()
-    end
-    return nextValue
-end
-
 local function normalizeZoneText(value)
     if type(value) ~= "string" then
         return nil
@@ -874,16 +862,6 @@ function FWR:RouteGenericLoot(sourceStage, quantity, debugBucket)
     end
 
     if not result.passed then
-        if self.AppendRejectedLoot then
-            self:AppendRejectedLoot(result, quantity or 1)
-        end
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace(debugBucket or "LOOT", "item rejected", {
-                "trigger=" .. tostring(sourceStage and sourceStage.sourceType or "loot"),
-                "item=" .. tostring(result.itemName or result.itemLink or "-"),
-                "reason=" .. tostring(result.reason or "-"),
-            })
-        end
         return result, false
     end
 
@@ -891,19 +869,6 @@ function FWR:RouteGenericLoot(sourceStage, quantity, debugBucket)
         self:AddToDisplayBasket(result, quantity)
     end
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace(debugBucket or "LOOT", "item committed", {
-            "trigger=" .. tostring(sourceStage and sourceStage.sourceType or "loot"),
-            "result=success",
-            "item=" .. tostring(result.itemName or "-"),
-            "quantity=" .. tostring(quantity or 1),
-            "classification=" .. tostring(result.itemTypeContext or "-"),
-            "profession=" .. tostring(result.profession or "-"),
-            "activity=" .. tostring(result.activityContext or "-"),
-            "zone=" .. tostring(result.zoneName or "-"),
-            "subzone=" .. tostring(result.subZoneName or "-"),
-        })
-    end
 
     return result, false
 end

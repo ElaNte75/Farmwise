@@ -273,12 +273,6 @@ function FWR:RefreshSkinningRouteState(now)
     local state = self:EnsureSkinningRouteState()
     now = tonumber(now) or (GetTime and GetTime() or 0)
     if state.batchActive and state.batchExpiresAt and now >= state.batchExpiresAt then
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("SKINNING", "trigger closed", {
-                "zone=" .. tostring(state.zoneName or "-"),
-                "outcome=expired",
-            })
-        end
         state.batchActive = false
         state.batchExpiresAt = nil
         state.zoneName = nil
@@ -324,15 +318,6 @@ function FWR:HandleSkinningSpellcastStart(unitToken, castGUID, spellID)
     local zoneName = getCurrentZoneName()
     local subZoneName = getCurrentSubZoneName()
     local canTakeOwnership = self.CanActivateIdleTrigger and self:CanActivateIdleTrigger("skinning", self:Now()) or true
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("SKINNING", "trigger opened", {
-            "spell=" .. tostring(spellName or "-"),
-            "spellID=" .. tostring(spellID or "-"),
-            "zone=" .. tostring(zoneName or "-"),
-            "subzone=" .. tostring(subZoneName or "-"),
-            "canTakeOwnership=" .. tostring(canTakeOwnership),
-        })
-    end
 
     if not canTakeOwnership then
         return
@@ -382,12 +367,6 @@ function FWR:HandleSkinningSpellcastCancelled(unitToken, castGUID, spellID, reas
 
     self:ClearSkinningRouteState(false)
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("SKINNING", "trigger closed", {
-            "outcome=" .. tostring(reasonText or "cancel"),
-            "spellID=" .. tostring(spellID or state.spellID or "-"),
-        })
-    end
 end
 
 function FWR:HandleSkinningSpellcastSucceeded(unitToken, castGUID, spellID)
@@ -427,15 +406,6 @@ function FWR:HandleSkinningSpellcastSucceeded(unitToken, castGUID, spellID)
     state.subZoneName = subZoneName
     state.lastSuccessAt = GetTime and GetTime() or 0
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("SKINNING", "trigger success", {
-            "spell=" .. tostring(state.spellName or "-"),
-            "spellID=" .. tostring(state.spellID or spellID or "-"),
-            "zone=" .. tostring(zoneName or "-"),
-            "subzone=" .. tostring(subZoneName or "-"),
-            "batchExpiresAt=" .. tostring(state.batchExpiresAt or "-"),
-        })
-    end
 end
 
 local function buildBaseCandidate(sourceStage)
@@ -568,12 +538,6 @@ function FWR:RouteSkinningLoot(sourceStage, quantity)
     end
 
     if not result.passed then
-        if self.AppendDebugTrace then
-            self:AppendDebugTrace("SKINNING", "item rejected", {
-                "item=" .. tostring(result.itemName or sourceStage.itemName or "-"),
-                "reason=" .. tostring(result.reason or "-"),
-            })
-        end
         return result, false
     end
 
@@ -586,23 +550,6 @@ function FWR:RouteSkinningLoot(sourceStage, quantity)
         self:AddToDisplayBasket(result, quantity)
     end
 
-    if self.AppendDebugTrace then
-        self:AppendDebugTrace("SKINNING", "item committed", {
-            "trigger=Skinning",
-            "result=success",
-            "item=" .. tostring(result.itemName or "-"),
-            "quantity=" .. tostring(quantity or 1),
-            "classification=" .. tostring(result.itemTypeContext or "-"),
-            "professions=" .. tostring(result.baseProfession or "-"),
-            "character=" .. tostring(result.characterKey or "-"),
-            "tradeMaterial=" .. tostring(result.isTradeMaterial),
-            "ahValid=" .. tostring(result.isAuctionHouseValid),
-            "expansion=" .. tostring(result.expansionCategory or "-"),
-            "storedIn=display_basket",
-            "zone=" .. tostring(result.zoneName or "-"),
-            "subzone=" .. tostring(result.subZoneName or "-"),
-        })
-    end
 
     return result, false
 end

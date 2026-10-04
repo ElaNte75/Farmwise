@@ -345,10 +345,3 @@ function FWR:ToggleAdvisorPanel()
         panel:Show()
     end
 end
-
-function FWR:ShowAdvisorPanel()
-    if not panel then
-        buildPanel()
-    end
-    panel:Show()
-end

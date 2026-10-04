@@ -91,18 +91,6 @@ function FWR:RetryPendingRoutedLootEntry(itemLink, quantity, attempts)
     end
 end
 
-local function appendIgnoredRouteTrace(sourceStage, entry)
-    if not FWR.AppendDebugTrace then
-        return
-    end
-
-    FWR:AppendDebugTrace("ROUTE", "loot ignored", {
-        "item=" .. tostring(entry and entry.itemLink or "-"),
-        "source=" .. tostring(sourceStage and sourceStage.sourceType or "-"),
-        "reason=no_active_route",
-    })
-end
-
 function FWR:HandleLootChatMessage(message)
     local lootEntries = extractLootEntries(message)
     if #lootEntries == 0 then
@@ -137,8 +125,6 @@ function FWR:HandleLootChatMessage(message)
                 if needsRetry then
                     self:RetryPendingRoutedLootEntry(entry.itemLink, entry.quantity or 1, 0)
                 end
-            else
-                appendIgnoredRouteTrace(sourceStage, entry)
             end
         end
     end

@@ -15,7 +15,7 @@ FWR.DEFAULT_SETTINGS = {
             angle = 220,
         },
         hideMainWindowInCombat = false,
-        hideControlPanelsInCombat = false,
+        hideControlPanelsInCombat = true,
         restoreControlPanelsAfterCombat = true,
         mainFramePosition = nil,
         showTooltips = true,
@@ -57,8 +57,8 @@ FWR.DEFAULT_SETTINGS = {
     tracking = {
         combinedAllData = false,
         combinedCharacterAllZones = false,
-        zoneData = true,
-        subZoneData = false,
+        zoneData = false,
+        subZoneData = true,
     },
     engine = {
         sessionResetMode = "manual",

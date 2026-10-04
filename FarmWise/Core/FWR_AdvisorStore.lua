@@ -125,6 +125,34 @@ local function ensureZoneData(zoneKey, zone, subzone)
     return data
 end
 
+function FWR:GetAdvisorStatus()
+    local db = self:EnsureAdvisorStore()
+    local zones, items = 0, 0
+    local seen = {}
+    for key, data in pairs(db) do
+        if not isMetaKey(key) and type(data) == "table" and type(data.items) == "table" then
+            zones = zones + 1
+            for _, info in pairs(data.items) do
+                if info.id and not seen[info.id] then
+                    seen[info.id] = true
+                    items = items + 1
+                end
+            end
+        end
+    end
+    return { zones = zones, items = items }
+end
+
+-- Erases every zone entry. Advisor preferences, old settings and the AH price snapshot stay.
+function FWR:ClearAdvisorData()
+    local db = self:EnsureAdvisorStore()
+    for key in pairs(db) do
+        if not isMetaKey(key) then
+            db[key] = nil
+        end
+    end
+end
+
 -- Called for every loot entry that passed the Reforged filters.
 function FWR:RecordAdvisorItem(entry, quantity)
     if type(entry) ~= "table" then
