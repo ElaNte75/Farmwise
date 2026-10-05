@@ -87,20 +87,22 @@ local function layoutMainFrameHeader(frame)
 
     local elements = FWR.UI_CONFIG and FWR.UI_CONFIG.MainFrame and FWR.UI_CONFIG.MainFrame.elements or {}
 
+    for _, key in ipairs({ "zone", "zoneSeparator", "subzone", "totalTimeLabel", "totalTimeValue", "runtimeSeparator", "runtimeLabel", "runtimeValue" }) do
+        if frame[key] and frame[key].SetWordWrap then
+            frame[key]:SetWordWrap(false)
+        end
+    end
+
     if frame.title and frame.titleAccent then
         local titleCfg = elements.title or {}
         local accentCfg = elements.titleAccent or {}
         frame.titleAccent:ClearAllPoints()
         frame.titleAccent:SetPoint("LEFT", frame.title, "RIGHT", tonumber(accentCfg.spacingFromTitle) or 6, tonumber(accentCfg.y) or 0)
-    end
 
-    if frame.zone and frame.zoneSeparator and frame.subzone then
-        local separatorCfg = elements.zoneSeparator or {}
-        local subzoneCfg = elements.subzone or {}
-        frame.zoneSeparator:ClearAllPoints()
-        frame.zoneSeparator:SetPoint("LEFT", frame.zone, "RIGHT", tonumber(separatorCfg.spacingFromZone) or 6, 0)
-        frame.subzone:ClearAllPoints()
-        frame.subzone:SetPoint("LEFT", frame.zoneSeparator, "RIGHT", tonumber(subzoneCfg.spacingFromSeparator) or 6, 0)
+        if frame.titleVersion then
+            frame.titleVersion:ClearAllPoints()
+            frame.titleVersion:SetPoint("LEFT", frame.titleAccent, "RIGHT", tonumber((elements.titleVersion or {}).spacingFromTitle) or 6, -1)
+        end
     end
 
     if frame.totalTimeLabel and frame.totalTimeValue and frame.runtimeSeparator and frame.runtimeLabel and frame.runtimeValue then
@@ -124,6 +126,57 @@ local function layoutMainFrameHeader(frame)
 
         frame.runtimeValue:ClearAllPoints()
         frame.runtimeValue:SetPoint("LEFT", frame.runtimeLabel, "RIGHT", tonumber(runtimeValueCfg.spacingFromLabel) or 4, 0)
+
+        -- zone above "Total", sub-zone above "Session", and the two "-" one under the other
+        if frame.zone and frame.zoneSeparator and frame.subzone then
+            local parent = frame.zone:GetParent()
+            local rowY = -(tonumber((elements.zone or {}).y) or 21)
+            local gap = 6
+            local totalLeft = tonumber((elements.totalTimeLabel or {}).x) or 5
+            local totalRight = (tonumber(totalValueCfg.x) or 40) + totalValueWidth
+            local separatorLeft = totalRight + (tonumber(runtimeSeparatorCfg.spacingFromTotalValue) or 8)
+            local sessionLeft = separatorLeft + separatorWidth + (tonumber(runtimeLabelCfg.spacingFromSeparator) or 8)
+            local sessionRight = sessionLeft + runtimeLabelWidth + (tonumber(runtimeValueCfg.spacingFromLabel) or 4) + (frame.runtimeValue:GetStringWidth() or 0)
+            local rightLimit = (parent:GetWidth() or 405) - 10
+
+            -- names are never shortened: they take the room they need
+            frame.zone:SetWidth(0)
+            frame.subzone:SetWidth(0)
+            frame.zone:SetJustifyH("LEFT")
+            frame.subzone:SetJustifyH("LEFT")
+            local zoneWidth = frame.zone:GetStringWidth() or 0
+            local subzoneWidth = frame.subzone:GetStringWidth() or 0
+
+            -- a name shorter than the group below it is centered over it; a longer one starts at the group's left edge
+            local function placeOver(nameWidth, groupLeft, groupRight)
+                local groupWidth = groupRight - groupLeft
+                if nameWidth <= groupWidth then
+                    return groupLeft + (groupWidth - nameWidth) / 2
+                end
+                return groupLeft
+            end
+
+            local zoneLeft = placeOver(zoneWidth, totalLeft, totalRight)
+
+            -- the dash stays above the dash below; a long zone pushes it, and the sub-zone, to the right
+            frame.runtimeSeparator:SetJustifyH("CENTER")
+            frame.zoneSeparator:SetJustifyH("CENTER")
+            frame.zoneSeparator:SetWidth(separatorWidth)
+            local dashLeft = math.max(separatorLeft, zoneLeft + zoneWidth + gap)
+            local subzoneLeft = math.max(placeOver(subzoneWidth, sessionLeft, sessionRight), dashLeft + separatorWidth + gap)
+
+            -- only a name that would leave the window is shortened
+            if subzoneLeft + subzoneWidth > rightLimit then
+                frame.subzone:SetWidth(math.max(24, rightLimit - subzoneLeft))
+            end
+
+            frame.zone:ClearAllPoints()
+            frame.zone:SetPoint("TOPLEFT", parent, "TOPLEFT", zoneLeft, rowY)
+            frame.zoneSeparator:ClearAllPoints()
+            frame.zoneSeparator:SetPoint("TOPLEFT", parent, "TOPLEFT", dashLeft, rowY)
+            frame.subzone:ClearAllPoints()
+            frame.subzone:SetPoint("TOPLEFT", parent, "TOPLEFT", subzoneLeft, rowY)
+        end
     end
 end
 
@@ -386,9 +439,15 @@ local function applyMoneyColumnLayout(group)
     end
 
     local cfg = group.config or {}
-    local goldWidth = math.max(group.gold:GetStringWidth() or 0, 12) + (tonumber(cfg.goldWidthPadding) or 6)
-    local silverWidth = math.max(group.silver:GetStringWidth() or 0, 12) + (tonumber(cfg.silverWidthPadding) or 6)
-    local copperWidth = math.max(group.copper:GetStringWidth() or 0, 12) + (tonumber(cfg.copperWidthPadding) or 6)
+    local widths = group.widths or {}
+    local goldWidth = widths.gold or (math.max(group.gold:GetStringWidth() or 0, 12) + (tonumber(cfg.goldWidthPadding) or 6))
+    local silverWidth = widths.silver or (math.max(group.silver:GetStringWidth() or 0, 12) + (tonumber(cfg.silverWidthPadding) or 6))
+    local copperWidth = widths.copper or (math.max(group.copper:GetStringWidth() or 0, 12) + (tonumber(cfg.copperWidthPadding) or 6))
+
+    -- numbers end at the right edge of their column, so the coin icons stand in one line
+    group.gold:SetJustifyH("RIGHT")
+    group.silver:SetJustifyH("RIGHT")
+    group.copper:SetJustifyH("RIGHT")
 
     group.gold:SetWidth(goldWidth)
 
@@ -408,19 +467,58 @@ local function applyMainFrameMoneyLayout(frame)
 
     local elements = FWR.UI_CONFIG and FWR.UI_CONFIG.MainFrame and FWR.UI_CONFIG.MainFrame.elements or {}
 
-    applyMoneyColumnLayout({
+    local totalGroup = {
         gold = frame.totalGoldGold,
         silver = frame.totalGoldSilver,
         copper = frame.totalGoldCopper,
         config = elements.totalGoldMoneyLayout,
-    })
-
-    applyMoneyColumnLayout({
+    }
+    local hourlyGroup = {
         gold = frame.estimatedGoldPerHourGold,
         silver = frame.estimatedGoldPerHourSilver,
         copper = frame.estimatedGoldPerHourCopper,
         config = elements.estimatedGoldPerHourMoneyLayout,
-    })
+    }
+
+    -- the two labels end at the same place: the colons line up and the words grow to the left
+    if frame.totalGoldLabel and frame.estimatedGoldPerHourLabel then
+        local labelWidth = math.max(frame.totalGoldLabel:GetStringWidth() or 0, frame.estimatedGoldPerHourLabel:GetStringWidth() or 0)
+        for _, label in ipairs({ frame.totalGoldLabel, frame.estimatedGoldPerHourLabel }) do
+            label:SetWidth(labelWidth)
+            label:SetJustifyH("RIGHT")
+        end
+
+        -- the amounts start a little after the colon, however wide the labels are
+        for _, pair in ipairs({
+            { frame.totalGoldValue, elements.totalGoldLabel, elements.totalGoldValue },
+            { frame.estimatedGoldPerHourValue, elements.estimatedGoldPerHourLabel, elements.estimatedGoldPerHourValue },
+        }) do
+            local anchor, labelConfig, valueConfig = pair[1], pair[2] or {}, pair[3] or {}
+            anchor:ClearAllPoints()
+            anchor:SetPoint("TOPLEFT", anchor:GetParent(), "TOPLEFT",
+                (tonumber(labelConfig.x) or 10) + labelWidth + (tonumber(valueConfig.spacingFromLabel) or 6), -(tonumber(valueConfig.y) or 0))
+        end
+    end
+
+    -- both rows use the widest width of each column
+    local function columnWidth(key, paddingKey)
+        local widest = 0
+        for _, group in ipairs({ totalGroup, hourlyGroup }) do
+            local width = math.max(group[key]:GetStringWidth() or 0, 12) + (tonumber((group.config or {})[paddingKey]) or 6)
+            widest = math.max(widest, width)
+        end
+        return widest
+    end
+    local shared = {
+        gold = columnWidth("gold", "goldWidthPadding"),
+        silver = columnWidth("silver", "silverWidthPadding"),
+        copper = columnWidth("copper", "copperWidthPadding"),
+    }
+    totalGroup.widths = shared
+    hourlyGroup.widths = shared
+
+    applyMoneyColumnLayout(totalGroup)
+    applyMoneyColumnLayout(hourlyGroup)
 end
 
 
@@ -643,6 +741,8 @@ local function createMainRenderHost(frame, contentBlock)
         zone = makeHeader((config.zone and config.zone.label) or "Zone", "LEFT"),
         subZone = makeHeader((config.subZone and config.subZone.label) or "Sub-Zone", "LEFT"),
         character = makeHeader((config.character and config.character.label) or "Character", "LEFT"),
+        price = makeHeader((config.price and config.price.label) or "Price", "CENTER"),
+        value = makeHeader((config.value and config.value.label) or "Value", "CENTER"),
     }
 
 host.columnHeaderHitboxes = {
@@ -657,6 +757,8 @@ host.columnHeaderHitboxes = {
     zone = createHeaderTooltipHitbox(header, "zone", function() return FWR.GetMainColumnTooltipText and FWR:GetMainColumnTooltipText("zone") or nil end),
     subZone = createHeaderTooltipHitbox(header, "subZone", function() return FWR.GetMainColumnTooltipText and FWR:GetMainColumnTooltipText("subZone") or nil end),
     character = createHeaderTooltipHitbox(header, "character", function() return FWR.GetMainColumnTooltipText and FWR:GetMainColumnTooltipText("character") or nil end),
+    price = createHeaderTooltipHitbox(header, "price", function() return FWR.GetMainColumnTooltipText and FWR:GetMainColumnTooltipText("price") or nil end),
+    value = createHeaderTooltipHitbox(header, "value", function() return FWR.GetMainColumnTooltipText and FWR:GetMainColumnTooltipText("value") or nil end),
 }
 
 
@@ -684,6 +786,26 @@ host.columnHeaderHitboxes = {
     frame.renderHost = host
 end
 
+
+-- The IDLE text switches between bright and dim on a fixed clock: the same pattern in every cycle.
+local IDLE_BLINK_PERIOD = 1.0
+local IDLE_BLINK_DIM_ALPHA = 0.2
+local idleBlinker = nil
+
+local function ensureIdleBlinker(self)
+    if idleBlinker then
+        return
+    end
+
+    idleBlinker = CreateFrame("Frame")
+    idleBlinker:SetScript("OnUpdate", function()
+        local idle = self.MainFrame and self.MainFrame.idle
+        if idle and self.__fwrIdleBlinks then
+            local bright = (GetTime() % IDLE_BLINK_PERIOD) < (IDLE_BLINK_PERIOD / 2)
+            idle:SetAlpha(bright and 1 or IDLE_BLINK_DIM_ALPHA)
+        end
+    end)
+end
 
 function FWR:RefreshMainWindowText()
     if not self.MainFrame then
@@ -726,7 +848,13 @@ function FWR:RefreshMainWindowText()
         self.MainFrame.titleAccent:SetText(((elements.titleAccent or {}).text) or "Reforge")
     end
 
-    layoutMainFrameHeader(self.MainFrame)
+    if self.MainFrame.titleVersion then
+        local versionText = "v" .. tostring(self.VERSION or "")
+        if self.RELEASE_STAGE then
+            versionText = versionText .. " |cffff9a1f" .. self.RELEASE_STAGE .. "|r"
+        end
+        self.MainFrame.titleVersion:SetText(versionText)
+    end
 
     if self.MainFrame.totalTimeLabel then
         self.MainFrame.totalTimeLabel:SetText((elements.totalTimeLabel and elements.totalTimeLabel.text) or "Total:")
@@ -744,6 +872,8 @@ function FWR:RefreshMainWindowText()
         self.MainFrame.runtimeValue:SetText(sessionTimeValueText)
     end
 
+    layoutMainFrameHeader(self.MainFrame)
+
     if self.MainFrame.totalGoldValue then
         self.MainFrame.totalGoldValue:Hide()
     end
@@ -752,8 +882,8 @@ function FWR:RefreshMainWindowText()
         self.MainFrame.estimatedGoldPerHourValue:Hide()
     end
 
-    if self.GetLiveTotalGoldBreakdown and self.MainFrame.totalGoldGold then
-        local gold, silver, copper = self:GetLiveTotalGoldBreakdown()
+    if self.GetLiveSessionGoldBreakdown and self.MainFrame.totalGoldGold then
+        local gold, silver, copper = self:GetLiveSessionGoldBreakdown()
         self.MainFrame.totalGoldGold:SetText(tostring(gold) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t")
         self.MainFrame.totalGoldSilver:SetText(string.format("%02d", tonumber(silver) or 0) .. "|TInterface\\MoneyFrame\\UI-SilverIcon:12:12:2:0|t")
         self.MainFrame.totalGoldCopper:SetText(string.format("%02d", tonumber(copper) or 0) .. "|TInterface\\MoneyFrame\\UI-CopperIcon:12:12:2:0|t")
@@ -768,6 +898,16 @@ function FWR:RefreshMainWindowText()
 
     applyMainFrameMoneyLayout(self.MainFrame)
 
+    -- the Reset button shows the reset mode of the Engine page; only the manual mode can be pressed
+    if self.MainFrame.resetButton and self.GetSessionResetButtonState then
+        local state = self:GetSessionResetButtonState()
+        if self.MainFrame.resetButton.__fwrText ~= state.text then
+            self.MainFrame.resetButton.__fwrText = state.text
+            self.MainFrame.resetButton:SetText(state.text)
+        end
+        self.MainFrame.resetButton:SetEnabled(state.enabled)
+    end
+
     if self.MainFrame.scanner and self.GetAuctionSyncAgeText then
         local scannerText, red, green, blue = self:GetAuctionSyncAgeText()
         self.MainFrame.scanner:SetText(scannerText)
@@ -775,13 +915,32 @@ function FWR:RefreshMainWindowText()
     end
 
     if self.MainFrame.idle then
-        self.MainFrame.idle:SetText(idleText)
+        local idle = self.MainFrame.idle
+        if idle.__fwrText ~= idleText then
+            idle.__fwrText = idleText
+            idle:SetText(idleText)
+        end
         if idleVisual then
-            self.MainFrame.idle:SetTextColor((idleVisual.color and idleVisual.color[1]) or 1, (idleVisual.color and idleVisual.color[2]) or 0.15, (idleVisual.color and idleVisual.color[3]) or 0.15, idleVisual.alpha or 1)
-            if idleVisual.font then
-                self.MainFrame.idle:SetFontObject(idleVisual.font)
+            -- setting a font resets the color, so the font goes first, and neither is touched when unchanged
+            if idleVisual.font and idle.__fwrFont ~= idleVisual.font then
+                idle.__fwrFont = idleVisual.font
+                idle.__fwrColorKey = nil
+                idle:SetFontObject(idleVisual.font)
+            end
+            local red = (idleVisual.color and idleVisual.color[1]) or 1
+            local green = (idleVisual.color and idleVisual.color[2]) or 0.15
+            local blue = (idleVisual.color and idleVisual.color[3]) or 0.15
+            local colorKey = red .. "," .. green .. "," .. blue
+            if idle.__fwrColorKey ~= colorKey then
+                idle.__fwrColorKey = colorKey
+                idle:SetTextColor(red, green, blue, 1)
             end
         end
+        self.__fwrIdleBlinks = idleVisual ~= nil and idleVisual.blink == true
+        if not self.__fwrIdleBlinks then
+            self.MainFrame.idle:SetAlpha(1)
+        end
+        ensureIdleBlinker(self)
     end
 
     if self.MainFrame.renderHost and self.RefreshDisplayScrollMetrics then
@@ -922,6 +1081,7 @@ function FWR:CreateMainFrame()
 
     frame.title = createConfiguredFontString(blocks[elements.title.parentBlock], elements.title)
     frame.titleAccent = createConfiguredFontString(blocks[elements.titleAccent.parentBlock], elements.titleAccent)
+    frame.titleVersion = createConfiguredFontString(blocks[elements.titleVersion.parentBlock], elements.titleVersion)
     frame.zone = createConfiguredFontString(blocks[elements.zone.parentBlock], elements.zone)
     frame.zoneSeparator = createConfiguredFontString(blocks[elements.zoneSeparator.parentBlock], elements.zoneSeparator)
     frame.subzone = createConfiguredFontString(blocks[elements.subzone.parentBlock], elements.subzone)
@@ -944,6 +1104,7 @@ function FWR:CreateMainFrame()
     frame.resetButton:SetSize(elements.resetButton.width or 78, elements.resetButton.height or 24)
     frame.resetButton:SetText(elements.resetButton.text or "Reset")
     frame.resetButton:SetScript("OnClick", function() FWR:ResetCurrentSessionView() end)
+    attachSimpleTooltip(frame.resetButton, function() return FWR:GetSessionResetButtonState().tooltip end)
 
     frame.optionsButton = CreateFrame("Button", nil, blocks[elements.optionsButton.parentBlock], "UIPanelButtonTemplate")
     positionTopAnchored(frame.optionsButton, blocks[elements.optionsButton.parentBlock], elements.optionsButton)

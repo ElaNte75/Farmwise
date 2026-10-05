@@ -10,17 +10,21 @@ local PANEL_CONFIG = (FWR.UI_CONFIG and FWR.UI_CONFIG.ControlPanelWindow) or {}
 local COLOR_CONFIG = PANEL_CONFIG.colors or {}
 
 local PANEL_WIDTH = 440
-local PANEL_HEIGHT = 410
+local PANEL_HEIGHT = 440
 local HEADER_HEIGHT = 56
 local FOOTER_HEIGHT = 44
 local PADDING = 18
-local ROW_HEIGHT = 64
+local ROW_HEIGHT = 76
 local VISIBLE_ROWS = 3   -- the mouse wheel moves by this many results at a time
 local MAX_ROWS = 60
 local MAX_STAT_CHARS = 66
 
 local MODE_ITEM = "item"
 local MODE_GOLD = "gold"
+
+-- amounts are written as 12g / 35s with the colors the game uses for gold and silver
+local GOLD_LETTER = "|cffffd700g|r"
+local SILVER_LETTER = "|cffc7c7cfs|r"
 
 local GUIDE_TAG_COLOR = { 0.55, 0.8, 1.0 }
 local NOTICE_COLOR = { 1.0, 0.82, 0.0 }
@@ -32,6 +36,8 @@ local exactItemID = nil
 local exactQuality = nil
 local exactName = nil
 local autoFilledText = nil
+local scrollOffset = 0
+local setScrollOffset, updateScrollRange
 
 local function color(name, fallback)
     return unpack(COLOR_CONFIG[name] or fallback)
@@ -63,16 +69,16 @@ local function formatGold(copper)
     elseif gold >= 100 then
         gold = math.floor(gold / 10) * 10
     end
-    return groupThousands(gold) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:0|t"
+    return groupThousands(gold) .. GOLD_LETTER
 end
 
 -- Price of one item: gold with one decimal, or silver for cheap items.
 local function formatPrice(copper)
     copper = tonumber(copper) or 0
     if copper >= 10000 then
-        return string.format("%.1f", copper / 10000) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:0|t"
+        return string.format("%.1f", copper / 10000) .. GOLD_LETTER
     end
-    return string.format("%d", math.floor(copper / 100)) .. "|TInterface\\MoneyFrame\\UI-SilverIcon:0|t"
+    return string.format("%d", math.floor(copper / 100)) .. SILVER_LETTER
 end
 
 local function truncate(text, limit)
@@ -204,7 +210,7 @@ local function guideRow(entry)
     local materials = {}
     for _, material in ipairs(entry.materials) do
         if material.price then
-            materials[#materials + 1] = string.format("%s (%s)", material.name, formatPrice(material.price))
+            materials[#materials + 1] = string.format("%s %s", material.name, formatPrice(material.price))
         else
             materials[#materials + 1] = material.name
         end
@@ -212,7 +218,7 @@ local function guideRow(entry)
 
     local lines = { "Where: " .. truncate(entry.place or "", MAX_STAT_CHARS - 7) }
     if #materials > 0 then
-        lines[#lines + 1] = "Materials: " .. truncate(table.concat(materials, ", "), MAX_STAT_CHARS - 11)
+        lines[#lines + 1] = "Materials: " .. table.concat(materials, ", ")
     end
     if entry.note and entry.note ~= "" then
         lines[#lines + 1] = truncate(entry.note, MAX_STAT_CHARS)
@@ -349,13 +355,15 @@ function FWR:RefreshAdvisorPanel()
         setRowVisible(panel.rows[index], false)
     end
 
-    panel.content:SetHeight(math.max(shown * ROW_HEIGHT, 1))
+    panel.contentHeight = shown * ROW_HEIGHT
+    panel.content:SetHeight(math.max(panel.contentHeight, 1))
+    updateScrollRange()
 
     -- start from the top when what the list shows changes
     local viewKey = mode .. "|" .. (panel.input:GetText() or "") .. "|" .. tostring(includeQuality())
     if panel.lastViewKey ~= viewKey then
         panel.lastViewKey = viewKey
-        panel.scroll:SetVerticalScroll(0)
+        setScrollOffset(0)
     end
 end
 
@@ -447,13 +455,32 @@ local function enableDrop(frame)
     end)
 end
 
+-- Moves the list; the scroll bar follows (fromSlider is true when the bar itself caused the move).
+setScrollOffset = function(value, fromSlider)
+    local range = panel.scrollRange or 0
+    scrollOffset = math.max(0, math.min(tonumber(value) or 0, range))
+    panel.content:ClearAllPoints()
+    panel.content:SetPoint("TOPLEFT", panel.scroll, "TOPLEFT", 0, scrollOffset)
+    if not fromSlider then
+        panel.scrollbar:SetValue(scrollOffset)
+    end
+end
+
+-- How far the list can move: the height of all results minus the height of the view.
+updateScrollRange = function()
+    local viewHeight = panel.scroll:GetHeight() or 0
+    local range = math.max(0, (panel.contentHeight or 0) - viewHeight)
+    panel.scrollRange = range
+    panel.scrollbar:SetMinMaxValues(0, range)
+    panel.scrollbar:SetShown(range > 0)
+    setScrollOffset(scrollOffset)
+end
+
 -- The mouse wheel moves by whole pages of VISIBLE_ROWS results.
-local function pageScroll(scrollFrame, delta)
+local function pageScroll(_, delta)
     local step = VISIBLE_ROWS * ROW_HEIGHT
-    local currentPage = math.floor(scrollFrame:GetVerticalScroll() / step + 0.5)
-    local target = (currentPage - delta) * step
-    target = math.max(0, math.min(target, scrollFrame:GetVerticalScrollRange()))
-    scrollFrame:SetVerticalScroll(target)
+    local currentPage = math.floor(scrollOffset / step + 0.5)
+    setScrollOffset((currentPage - delta) * step)
 end
 
 ------------------------------------------------------------
@@ -602,12 +629,37 @@ local function buildControls()
     panel.notice:SetJustifyH("LEFT")
     panel.notice:SetJustifyV("TOP")
 
-    panel.scroll = CreateFrame("ScrollFrame", nil, panel.body, "UIPanelScrollFrameTemplate")
+    -- the view clips the results; the content inside it is moved up and down by the scroll offset
+    panel.scroll = CreateFrame("Frame", nil, panel.body)
+    panel.scroll:SetClipsChildren(true)
+    panel.scroll:EnableMouse(true)
     panel.scroll:EnableMouseWheel(true)
     panel.scroll:SetScript("OnMouseWheel", pageScroll)
+    panel.scroll:SetScript("OnSizeChanged", function() updateScrollRange() end)
     panel.content = CreateFrame("Frame", nil, panel.scroll)
+    panel.content:SetPoint("TOPLEFT", panel.scroll, "TOPLEFT", 0, 0)
     panel.content:SetSize(PANEL_WIDTH - 2 * PADDING - 24, 1)
-    panel.scroll:SetScrollChild(panel.content)
+
+    panel.scrollbar = CreateFrame("Slider", nil, panel.body)
+    panel.scrollbar:SetOrientation("VERTICAL")
+    panel.scrollbar:SetWidth(10)
+    panel.scrollbar:SetPoint("TOPLEFT", panel.scroll, "TOPRIGHT", 4, 0)
+    panel.scrollbar:SetPoint("BOTTOMLEFT", panel.scroll, "BOTTOMRIGHT", 4, 0)
+    panel.scrollbar:SetMinMaxValues(0, 0)
+    panel.scrollbar:SetValueStep(1)
+    panel.scrollbar:SetObeyStepOnDrag(true)
+    panel.scrollbar:SetValue(0)
+    local track = panel.scrollbar:CreateTexture(nil, "BACKGROUND")
+    track:SetAllPoints()
+    track:SetColorTexture(1, 1, 1, 0.08)
+    panel.scrollbar:SetThumbTexture("Interface/Buttons/WHITE8X8")
+    local thumb = panel.scrollbar:GetThumbTexture()
+    thumb:SetSize(10, 36)
+    thumb:SetColorTexture(0.85, 0.65, 0.15, 0.75)
+    panel.scrollbar:SetScript("OnValueChanged", function(_, value)
+        setScrollOffset(value, true)
+    end)
+    panel.scrollbar:Hide()
 
     enableDrop(panel.body)
     enableDrop(panel.input)

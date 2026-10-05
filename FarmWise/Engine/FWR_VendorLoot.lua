@@ -1,10 +1,12 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
--- Vendor value of looted items.
--- Crafting materials are valued at their Auction House price. Everything else you loot
--- (junk, gear, other drops) is valued at the price a vendor pays for it. The value is
--- recorded the moment the item is looted, for the zone and sub-zone you are standing in.
+-- Value of looted scrap.
+-- Scrap is every poor quality (grey) item: it is only good for the vendor. Its vendor price is
+-- recorded the moment it is looted, for the zone and sub-zone you are standing in, so it does not
+-- matter where it is sold later. Gear and other drops are not counted, because nobody can know
+-- whether they will be sold, disenchanted or kept. Crafting materials are valued at the Auction
+-- House elsewhere.
 
 local selfLootPatterns = nil
 local otherLootPatterns = nil
@@ -86,11 +88,11 @@ function FWR:HandleVendorLootMessage(message)
 
         if itemID then
             Item:CreateFromItemID(itemID):ContinueOnItemLoad(function()
-                local _, _, _, _, _, _, _, _, _, _, sellPrice, classID, _, _, _, _, isCraftingReagent = GetItemInfo(itemID)
+                local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID, _, _, _, _, isCraftingReagent = GetItemInfo(itemID)
                 sellPrice = tonumber(sellPrice) or 0
 
-                -- trade materials are valued at the Auction House, not at the vendor
-                if classID == 7 or isCraftingReagent == true or sellPrice <= 0 then
+                -- only poor quality items are scrap; trade materials are valued at the Auction House
+                if quality ~= 0 or classID == 7 or isCraftingReagent == true or sellPrice <= 0 then
                     return
                 end
 

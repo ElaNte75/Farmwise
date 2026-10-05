@@ -1,9 +1,16 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
-FWR.VERSION = "3.0.0"
+-- The version comes from the "## Version:" line of FarmWise.toc, for example "3.0.1" or "3.0.1 beta".
+-- The first word is the number; any words after it (like "beta") are the release stage, shown next to the
+-- number in the main window. Remove them from the toc line and they disappear from the window too.
+local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+local rawVersion = type(getMetadata) == "function" and getMetadata("FarmWise", "Version") or ""
+local versionNumber, versionStage = tostring(rawVersion):match("^%s*(%S+)%s*(.-)%s*$")
+FWR.VERSION = versionNumber or "?"
+FWR.RELEASE_STAGE = (versionStage and versionStage ~= "") and versionStage:upper() or nil
 FWR.DB_VERSION = 1
-FWR.BUILD_NAME = "FarmWise_3.0.0"
+FWR.BUILD_NAME = "FarmWise_" .. FWR.VERSION
 
 FWR.DEFAULT_SETTINGS = {
     ui = {
@@ -35,6 +42,8 @@ FWR.DEFAULT_SETTINGS = {
             zone = false,
             subZone = false,
             character = false,
+            price = false,
+            value = false,
         },
         columnOrder = {
             quantity = 2,
@@ -47,6 +56,8 @@ FWR.DEFAULT_SETTINGS = {
             zone = 9,
             subZone = 10,
             character = 11,
+            price = 12,
+            value = 13,
         },
     },
     displayFilters = {
@@ -63,11 +74,14 @@ FWR.DEFAULT_SETTINGS = {
     ah = {
         autoScan = true,
         sound = true,
+        tooltipPrice = true,
+        fullScan = false,
         freshnessMinutes = 30,
     },
     engine = {
         sessionResetMode = "manual",
         localResetMinutes = 0,
+        autoResetDelaySeconds = 30,
         rarityLevel = 1,
         rarityFilterEnabled = false,
     },

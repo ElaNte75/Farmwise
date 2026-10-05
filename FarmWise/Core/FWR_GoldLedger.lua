@@ -75,8 +75,8 @@ local function ensureGoldContextBucket(ledger, contextKey, zoneName, subZoneName
     bucket.contextKey = contextKey
     bucket.zoneName = zoneName
     bucket.subZoneName = subZoneName
-    bucket.rawLootCopperTotal = tonumber(bucket.rawLootCopperTotal) or 0
     bucket.rawLootCopperSession = tonumber(bucket.rawLootCopperSession) or 0
+    bucket.scrapCopperSession = tonumber(bucket.scrapCopperSession) or 0
     bucket.updatedAt = tonumber(bucket.updatedAt) or 0
     return bucket
 end
@@ -143,21 +143,42 @@ function FWR:EnsureGoldContext(contextKey, zoneName, subZoneName)
     return ensureGoldContextBucket(ledger, contextKey, zoneName, subZoneName)
 end
 
--- Looted money and estimated gold per hour for what the main window currently shows.
+-- Scrap (poor quality items) is worth its vendor price from the moment it is looted.
+function FWR:RecordScrapGold(copper, zone, subzone)
+    copper = tonumber(copper) or 0
+    if copper <= 0 then
+        return
+    end
+
+    local context = self:EnsureGoldContext(self:BuildDetailedContextKey(zone or "", subzone), zone, subzone)
+    context.scrapCopperSession = (tonumber(context.scrapCopperSession) or 0) + copper
+    context.updatedAt = self:Now()
+
+    self:TouchDatabase()
+    if self.RefreshMainWindowText then
+        self:RefreshMainWindowText()
+    end
+end
+
+-- What the current session is worth for what the main window shows:
+--   money looted from mobs + vendor value of scrap + trade materials at their Auction House price
+--   (minus the Auction House cut). Gear and other drops are not counted: nobody knows what they will become.
+-- The estimate per hour is that amount divided by the session time.
 function FWR:GetGoldContextSummary()
     local scope = self:GetViewScope()
-    local totalCopper, sessionCopper = self:SumViewScopeGold(scope)
-    local totalSeconds = self:SumViewScopeSeconds(scope)
-    local estimatedCopperPerHour = 0
+    local rawCopper, scrapCopper = self:SumViewScopeGold(scope)
+    local materialsCopper = self:SumViewScopeMaterialsValue(scope) * (1 - (self.AUCTION_HOUSE_CUT or 0.05))
+    local _, sessionSeconds = self:SumViewScopeSeconds(scope)
 
-    if totalSeconds > 0 then
-        estimatedCopperPerHour = (totalCopper * 3600) / totalSeconds
+    local sessionCopper = rawCopper + scrapCopper + materialsCopper
+    local estimatedCopperPerHour = 0
+    if sessionSeconds > 0 then
+        estimatedCopperPerHour = (sessionCopper * 3600) / sessionSeconds
     end
 
     return {
-        totalCopper = totalCopper,
         sessionCopper = sessionCopper,
-        totalSeconds = totalSeconds,
+        sessionSeconds = sessionSeconds,
         estimatedCopperPerHour = estimatedCopperPerHour,
     }
 end
@@ -170,9 +191,9 @@ function FWR:GetMoneyBreakdownFromCopper(copper)
     return gold, silver, copperOnly
 end
 
-function FWR:GetLiveTotalGoldBreakdown()
+function FWR:GetLiveSessionGoldBreakdown()
     local summary = self:GetGoldContextSummary()
-    return self:GetMoneyBreakdownFromCopper(summary.totalCopper)
+    return self:GetMoneyBreakdownFromCopper(summary.sessionCopper)
 end
 
 function FWR:GetLiveEstimatedGoldPerHourBreakdown()
@@ -200,7 +221,6 @@ function FWR:HandleLootMoneyChatMessage(message)
 
     local contextKey, zoneName, subZoneName = getCurrentGoldContextInfo(self)
     local context = self:EnsureGoldContext(contextKey, zoneName, subZoneName)
-    context.rawLootCopperTotal = (tonumber(context.rawLootCopperTotal) or 0) + copper
     context.rawLootCopperSession = (tonumber(context.rawLootCopperSession) or 0) + copper
     context.updatedAt = self:Now()
 

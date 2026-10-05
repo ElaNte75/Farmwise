@@ -153,6 +153,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         if FWR.HandleIdleCombatStart then
             FWR:HandleIdleCombatStart(...)
         end
+        FWR:Emit("combatChanged", true)
         if FWR.ApplySettingsVisibilityRules then
             FWR:ApplySettingsVisibilityRules(true)
         end
@@ -160,6 +161,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         if FWR.HandleIdleCombatEnd then
             FWR:HandleIdleCombatEnd(...)
         end
+        FWR:Emit("combatChanged", false)
         if FWR.ApplySettingsVisibilityRules then
             FWR:ApplySettingsVisibilityRules(true)
         end
@@ -214,6 +216,13 @@ FWR:Subscribe("lootMoneyRecorded", function(copper)
 end)
 FWR:Subscribe("vendorValueRecorded", function(copper, zone, subzone)
     FWR:RecordAdvisorVendor(copper, zone, subzone)
+    FWR:RecordScrapGold(copper, zone, subzone)
+end)
+FWR:Subscribe("areaChanged", function(contextKey)
+    FWR:HandleAreaChanged(contextKey)
+end)
+FWR:Subscribe("combatChanged", function(inCombat)
+    FWR:HandleAutoResetCombat(inCombat)
 end)
 FWR:Subscribe("dataCleared", function()
     FWR:ClearAdvisorData()

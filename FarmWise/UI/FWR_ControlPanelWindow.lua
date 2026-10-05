@@ -223,6 +223,23 @@ local function updateCheckboxVisual(check)
     end
 end
 
+-- Shows an explanation next to a checkbox while the mouse is over it.
+local function attachTooltip(frame, title, text)
+    if not frame or type(text) ~= "string" or text == "" then
+        return
+    end
+
+    frame:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(title or "", 1, 1, 1)
+        GameTooltip:AddLine(text, nil, nil, nil, true)
+        GameTooltip:Show()
+    end)
+    frame:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
+
 local function createCategoryButton(parent, label)
     local navButtonConfig = CATEGORY_CONFIG.button or {}
     local navTextColor = COLOR_CONFIG.navText or { 0.96, 0.96, 0.96, 1.0 }
@@ -619,6 +636,7 @@ local function createDisplayPage(parent, frame)
             check.Text:SetJustifyH("LEFT")
             check.Text:SetText(entry.label or "")
         end
+        attachTooltip(check, entry.label, entry.tooltip)
 
         if entry.locked then
             check:SetChecked(true)
@@ -844,6 +862,7 @@ local function createTrackingPage(parent)
             check.Text:SetJustifyH("LEFT")
             check.Text:SetText(option.label)
         end
+        attachTooltip(check, option.label, option.tooltip)
 
         check:SetScript("OnClick", function(self)
             local checked = self:GetChecked() == true
@@ -929,6 +948,9 @@ local function createEnginePage(parent)
     localCheck:SetPoint("TOPLEFT", manualCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
     styleEngineCheck(localCheck, localResetConfig.label or "Local Session Reset")
 
+    attachTooltip(manualCheck, (engineConfig.manualReset or {}).label, (engineConfig.manualReset or {}).tooltip)
+    attachTooltip(localCheck, localResetConfig.label, localResetConfig.tooltip)
+
     local localTimeSlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
     localTimeSlider:SetPoint("LEFT", localCheck, "LEFT", localResetConfig.sliderX or 190, localResetConfig.sliderY or -1)
     localTimeSlider:SetWidth(localResetConfig.sliderWidth or 130)
@@ -946,9 +968,43 @@ local function createEnginePage(parent)
     localTimeValue:SetJustifyH("LEFT")
     localTimeValue:SetTextColor(0.82, 0.82, 0.82, 1)
 
+    local autoResetConfig = engineConfig.autoReset or {}
+    local autoCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+    autoCheck:SetPoint("TOPLEFT", localCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+    styleEngineCheck(autoCheck, autoResetConfig.label or "Auto Session Reset")
+    attachTooltip(autoCheck, autoResetConfig.label, autoResetConfig.tooltip)
+
+    -- how long you may stay away from an area, after a fight, before its session starts over: 15 seconds to 2 minutes
+    local AUTO_DELAY_STEP, AUTO_DELAY_STEPS = 15, 8
+    local autoDelaySlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
+    autoDelaySlider:SetPoint("LEFT", autoCheck, "LEFT", autoResetConfig.sliderX or 190, autoResetConfig.sliderY or -1)
+    autoDelaySlider:SetWidth(autoResetConfig.sliderWidth or 130)
+    autoDelaySlider:SetMinMaxValues(1, AUTO_DELAY_STEPS)
+    autoDelaySlider:SetValueStep(1)
+    autoDelaySlider:SetObeyStepOnDrag(true)
+    autoDelaySlider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    if autoDelaySlider.Text then autoDelaySlider.Text:SetText("") end
+    if autoDelaySlider.Low then autoDelaySlider.Low:SetText(autoResetConfig.low or "15s") end
+    if autoDelaySlider.High then autoDelaySlider.High:SetText(autoResetConfig.high or "2m") end
+
+    local autoDelayValue = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    autoDelayValue:SetPoint("LEFT", autoDelaySlider, "RIGHT", autoResetConfig.valueTextX or 8, 0)
+    autoDelayValue:SetWidth(autoResetConfig.valueTextWidth or 46)
+    autoDelayValue:SetJustifyH("LEFT")
+    autoDelayValue:SetTextColor(0.82, 0.82, 0.82, 1)
+
+    local function formatDelay(seconds)
+        if seconds >= 60 then
+            return string.format("%dm %02ds", math.floor(seconds / 60), seconds % 60)
+        end
+        return string.format("%ds", seconds)
+    end
+
     local rarityCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    rarityCheck:SetPoint("TOPLEFT", localCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+    rarityCheck:SetPoint("TOPLEFT", autoCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
     styleEngineCheck(rarityCheck, rarityConfig.label or "Set Rarity Level")
+
+    attachTooltip(rarityCheck, rarityConfig.label, rarityConfig.tooltip)
 
     local raritySlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
     raritySlider:SetPoint("LEFT", rarityCheck, "LEFT", rarityConfig.sliderX or 190, rarityConfig.sliderY or -1)
@@ -969,7 +1025,7 @@ local function createEnginePage(parent)
 
     local function getNormalizedMode()
         local modeValue = ((FWR.Settings or {}).engine or {}).sessionResetMode or "manual"
-        if modeValue ~= "local" then
+        if modeValue ~= "local" and modeValue ~= "auto" then
             modeValue = "manual"
         end
         return modeValue
@@ -985,8 +1041,26 @@ local function createEnginePage(parent)
         local modeValue = getNormalizedMode()
         manualCheck:SetChecked(modeValue == "manual")
         localCheck:SetChecked(modeValue == "local")
+        autoCheck:SetChecked(modeValue == "auto")
         updateCheckboxVisual(manualCheck)
         updateCheckboxVisual(localCheck)
+        updateCheckboxVisual(autoCheck)
+
+        local autoSeconds = math.max(AUTO_DELAY_STEP, math.min(AUTO_DELAY_STEP * AUTO_DELAY_STEPS, getNumberSetting({ "engine", "autoResetDelaySeconds" }, 30)))
+        local autoIndex = math.floor(autoSeconds / AUTO_DELAY_STEP + 0.5)
+        autoDelaySlider.__fwrRefreshing = true
+        autoDelaySlider:SetValue(autoIndex)
+        autoDelaySlider.__fwrPendingIndex = autoIndex
+        autoDelaySlider.__fwrRefreshing = nil
+        autoDelaySlider:SetEnabled(modeValue == "auto")
+        autoDelayValue:SetText(formatDelay(autoIndex * AUTO_DELAY_STEP))
+        autoDelayValue:SetAlpha(modeValue == "auto" and 1 or 0.45)
+        do
+            local thumb = autoDelaySlider.GetThumbTexture and autoDelaySlider:GetThumbTexture() or nil
+            if thumb and thumb.SetAlpha then thumb:SetAlpha(modeValue == "auto" and 1 or 0) end
+        end
+        if autoDelaySlider.Low then autoDelaySlider.Low:SetAlpha(modeValue == "auto" and 1 or 0.45) end
+        if autoDelaySlider.High then autoDelaySlider.High:SetAlpha(modeValue == "auto" and 1 or 0.45) end
 
         local localMinutes = math.max(0, math.min(1435, getNumberSetting({ "engine", "localResetMinutes" }, 0)))
         local localIndex = math.floor(localMinutes / 15 + 0.5)
@@ -1026,7 +1100,7 @@ local function createEnginePage(parent)
     end
 
     local function setMode(modeValue)
-        if modeValue ~= "local" then
+        if modeValue ~= "local" and modeValue ~= "auto" then
             modeValue = "manual"
         end
         setValueSetting({ "engine", "sessionResetMode" }, modeValue)
@@ -1049,6 +1123,32 @@ local function createEnginePage(parent)
         end
         setMode("local")
     end)
+
+    autoCheck:SetScript("OnClick", function(self)
+        if not self:GetChecked() then
+            self:SetChecked(true)
+            return
+        end
+        setMode("auto")
+    end)
+
+    autoDelaySlider:SetScript("OnValueChanged", function(self, value)
+        if self.__fwrRefreshing then
+            return
+        end
+        local snapped = math.max(1, math.min(AUTO_DELAY_STEPS, math.floor((tonumber(value) or 1) + 0.5)))
+        self.__fwrPendingIndex = snapped
+        autoDelayValue:SetText(formatDelay(snapped * AUTO_DELAY_STEP))
+    end)
+    local function commitAutoDelay(self)
+        local idx = self.__fwrPendingIndex or math.max(1, math.min(AUTO_DELAY_STEPS, math.floor((tonumber(self:GetValue()) or 1) + 0.5)))
+        setNumberSetting({ "engine", "autoResetDelaySeconds" }, idx * AUTO_DELAY_STEP)
+    end
+    autoDelaySlider:SetScript("OnMouseUp", function(self)
+        commitAutoDelay(self)
+        refreshEngineControls()
+    end)
+    autoDelaySlider:SetScript("OnHide", commitAutoDelay)
 
     localTimeSlider:SetScript("OnValueChanged", function(self, value)
         if self.__fwrRefreshing then
@@ -1132,8 +1232,28 @@ local function createAuctionPage(parent)
     soundCheck:SetPoint("TOPLEFT", autoCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
     styleCheck(soundCheck, (config.sound or {}).label)
 
+    local tooltipCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+    tooltipCheck:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+    styleCheck(tooltipCheck, (config.tooltipPrice or {}).label)
+
+    local fullCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+    fullCheck:SetPoint("TOPLEFT", tooltipCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+    styleCheck(fullCheck, (config.fullScan or {}).label)
+
+    local fullNote = page:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    fullNote:SetPoint("TOPLEFT", fullCheck, "BOTTOMLEFT", 26, 0)
+    fullNote:SetPoint("RIGHT", page, "RIGHT", -18, 0)
+    fullNote:SetJustifyH("LEFT")
+    fullNote:SetJustifyV("TOP")
+    fullNote:SetText((config.fullScan or {}).note or "")
+
+    attachTooltip(autoCheck, (config.autoScan or {}).label, (config.autoScan or {}).tooltip)
+    attachTooltip(soundCheck, (config.sound or {}).label, (config.sound or {}).tooltip)
+    attachTooltip(tooltipCheck, (config.tooltipPrice or {}).label, (config.tooltipPrice or {}).tooltip)
+    attachTooltip(fullCheck, (config.fullScan or {}).label, (config.fullScan or {}).tooltip)
+
     local intervalTitle = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    intervalTitle:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", 0, -14)
+    intervalTitle:SetPoint("TOPLEFT", fullNote, "BOTTOMLEFT", -26, -14)
     intervalTitle:SetTextColor(1, 1, 1, 1)
     intervalTitle:SetText(config.intervalTitle or "")
 
@@ -1156,6 +1276,12 @@ local function createAuctionPage(parent)
         soundCheck:SetChecked(getBooleanSetting({ "ah", "sound" }, true))
         updateCheckboxVisual(soundCheck)
 
+        tooltipCheck:SetChecked(getBooleanSetting({ "ah", "tooltipPrice" }, true))
+        updateCheckboxVisual(tooltipCheck)
+
+        fullCheck:SetChecked(getBooleanSetting({ "ah", "fullScan" }, false))
+        updateCheckboxVisual(fullCheck)
+
         local current = getNumberSetting({ "ah", "freshnessMinutes" }, 30)
         for _, check in ipairs(intervalChecks) do
             check:SetChecked(check.minutes == current)
@@ -1176,6 +1302,16 @@ local function createAuctionPage(parent)
 
     soundCheck:SetScript("OnClick", function(self)
         setBooleanSetting({ "ah", "sound" }, self:GetChecked() == true)
+        refresh()
+    end)
+
+    tooltipCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tooltipPrice" }, self:GetChecked() == true)
+        refresh()
+    end)
+
+    fullCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "fullScan" }, self:GetChecked() == true)
         refresh()
     end)
 

@@ -203,7 +203,7 @@ function FWR:CreateLauncherIcon()
             return
         end
         GameTooltip:SetOwner(selfButton, "ANCHOR_LEFT")
-        GameTooltip:SetText("FarmWise Reforged", 1, 0.82, 0)
+        GameTooltip:SetText("FarmWise Reforged v" .. tostring(FWR.VERSION or "") .. (FWR.RELEASE_STAGE and (" " .. FWR.RELEASE_STAGE) or ""), 1, 0.82, 0)
         GameTooltip:AddLine("Left Click: Show / Hide Main Frame", 0.9, 0.9, 0.9)
         GameTooltip:AddLine("Right Click: Open Control Panel", 0.9, 0.9, 0.9)
         GameTooltip:AddLine("Drag: Move around Minimap", 0.7, 0.7, 0.7)

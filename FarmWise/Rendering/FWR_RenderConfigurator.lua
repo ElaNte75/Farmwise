@@ -128,5 +128,23 @@ FWR.UI_CONFIG.Rendering = {
             dataInsetLeft = 5,
             dataInsetRight = 5,
         },
+        price = {
+            label = "Price",
+            width = 84,
+            visible = false,
+            headerAlign = "CENTER",
+            dataAlign = "RIGHT",
+            dataInsetLeft = 0,
+            dataInsetRight = 4,
+        },
+        value = {
+            label = "Value",
+            width = 96,
+            visible = false,
+            headerAlign = "CENTER",
+            dataAlign = "RIGHT",
+            dataInsetLeft = 0,
+            dataInsetRight = 4,
+        },
     },
 }

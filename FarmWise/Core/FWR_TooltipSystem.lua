@@ -32,6 +32,8 @@ local MAIN_COLUMN_TOOLTIP_TEXTS = {
     zone = "Zone\nShows the main zone tied to this row.\nThis is the larger area context used for the tracked data.",
     subZone = "Sub-Zone\nShows the sub-zone tied to this row when one is available.\nThis is the more specific location inside the main zone.",
     character = "Character\nShows which character recorded this row.\nUse it to distinguish data when multiple characters contribute to the history.",
+    price = "Price\nThe lowest Auction House price of one item, from the last FarmWise scan.\nShows - when the item has no scanned price.",
+    value = "Value\nPrice multiplied by the Session quantity: what the items collected since the last reset are worth.\nIt uses the latest scanned price, not the price at the time of looting.",
 }
 
 local EXPANSION_LOOKUP = {}

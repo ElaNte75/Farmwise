@@ -341,6 +341,9 @@ function FWR:RefreshIdleZoneInfo()
     state.lastUpdateAt = now
 
     if nextKey ~= previousKey then
+        if nextKey ~= "" then
+            self:Emit("areaChanged", nextKey)
+        end
         if state.gatherCastActive == true or type(state.gatherDeadline) == "number" then
             state.gatherContextKey = nextKey
         end
@@ -533,11 +536,12 @@ function FWR:GetIdleIndicatorVisual()
     end
 
 
-    local pulse = 0.55 + (0.45 * math.abs(math.sin(GetTime() * 2.8)))
+    -- only the idle state blinks; the main window drives the blink on its own steady clock
     return {
         color = { 1.0, 0.15, 0.15 },
-        alpha = pulse,
+        alpha = 1.0,
         font = "GameFontNormal",
+        blink = true,
     }
 end
 

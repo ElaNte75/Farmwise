@@ -3,7 +3,7 @@ FarmWiseReforged = FWR
 
 -- Session reset (Engine page). In "manual" mode sessions only reset when the user asks.
 -- In "local" mode every session counter is reset once per day at the chosen local time.
--- Totals and the Advisor statistics are never touched.
+-- "auto" mode lives in FWR_AutoReset.lua. Totals and the Advisor statistics are never touched.
 
 local CHECK_INTERVAL_SECONDS = 30
 
@@ -32,6 +32,7 @@ function FWR:ResetSessionsInScope(scope)
 
     self:ForEachInViewScope(db.goldLedger and db.goldLedger.byContextKey, scope, function(_, bucket)
         bucket.rawLootCopperSession = 0
+        bucket.scrapCopperSession = 0
     end)
 
     self:ForEachInViewScope(db.renderState and db.renderState.displayBasketByContext, scope, function(_, basket)
@@ -106,4 +107,52 @@ function FWR:TickSessionReset()
     if lastReset then
         self:ResetAllSessions()
     end
+end
+
+-- Seconds until the next daily reset of the "local" mode.
+local function getSecondsUntilLocalReset(engine)
+    local now = time()
+    local scheduled = getScheduledTimestamp(tonumber(engine.localResetMinutes) or 0, now)
+    if now >= scheduled then
+        scheduled = scheduled + 24 * 3600
+    end
+    return scheduled - now
+end
+
+local function formatWait(seconds)
+    local minutes = math.max(1, math.ceil(seconds / 60))
+    if minutes >= 60 then
+        return string.format("%dh %02dm", math.floor(minutes / 60), minutes % 60)
+    end
+    return string.format("%dm", minutes)
+end
+
+-- What the main window's Reset button shows: its text, whether it can be pressed, and its tooltip.
+-- Only the manual mode has a real button; the other two modes show how the reset will happen.
+function FWR:GetSessionResetButtonState()
+    local engine = self.Settings and self.Settings.engine or {}
+    local mode = engine.sessionResetMode
+
+    if mode == "local" then
+        local wait = getSecondsUntilLocalReset(engine)
+        return {
+            text = formatWait(wait),
+            enabled = false,
+            tooltip = string.format("Session reset: daily\nThe session starts over by itself every day at %s (in %s).\nChange this in Options > Engine.",
+                string.format("%02d:%02d", math.floor((tonumber(engine.localResetMinutes) or 0) / 60), (tonumber(engine.localResetMinutes) or 0) % 60), formatWait(wait)),
+        }
+    elseif mode == "auto" then
+        return {
+            text = "Auto",
+            enabled = false,
+            tooltip = string.format("Session reset: automatic\nThe session of an area starts over %d seconds after you left it and finished fighting. Coming back in time keeps it. It follows the Tracking setting: Zone or Sub-Zone.\nChange this in Options > Engine.",
+                self:GetAutoResetDelaySeconds()),
+        }
+    end
+
+    return {
+        text = "Reset",
+        enabled = true,
+        tooltip = "Reset session\nStarts a new session for what the window shows: session time, session items and session gold go back to zero.\nYour saved data and the Advisor are NOT erased.",
+    }
 end

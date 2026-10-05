@@ -151,6 +151,8 @@ local FULL_COLUMN_CONFIG = {
     zone = { label = "Zone", width = 110, headerAlign = "LEFT", dataAlign = "LEFT", dataInsetLeft = 3, dataInsetRight = 3 },
     subZone = { label = "Sub-Zone", width = 110, headerAlign = "LEFT", dataAlign = "LEFT", dataInsetLeft = 3, dataInsetRight = 3 },
     character = { label = "Character", width = 128, headerAlign = "LEFT", dataAlign = "LEFT", dataInsetLeft = 3, dataInsetRight = 3 },
+    price = { label = "Price", width = 84, headerAlign = "CENTER", dataAlign = "RIGHT", dataInsetLeft = 0, dataInsetRight = 4 },
+    value = { label = "Value", width = 96, headerAlign = "CENTER", dataAlign = "RIGHT", dataInsetLeft = 0, dataInsetRight = 4 },
     gap = 2,
 }
 
@@ -169,6 +171,8 @@ local DEFAULT_MAIN_COLUMN_CONFIG = {
     zone = { label = "Zone", width = 0, visible = false, headerAlign = "LEFT", dataAlign = "LEFT", dataInsetLeft = 3, dataInsetRight = 3 },
     subZone = { label = "Sub-Zone", width = 0, visible = false, headerAlign = "LEFT", dataAlign = "LEFT", dataInsetLeft = 3, dataInsetRight = 3 },
     character = { label = "Character", width = 0, visible = false, headerAlign = "LEFT", dataAlign = "LEFT", dataInsetLeft = 3, dataInsetRight = 3 },
+    price = { label = "Price", width = 0, visible = false, headerAlign = "CENTER", dataAlign = "RIGHT", dataInsetLeft = 0, dataInsetRight = 4 },
+    value = { label = "Value", width = 0, visible = false, headerAlign = "CENTER", dataAlign = "RIGHT", dataInsetLeft = 0, dataInsetRight = 4 },
     gap = 2,
 }
 
@@ -185,6 +189,8 @@ local COLUMN_KEYS = {
     "zone",
     "subZone",
     "character",
+    "price",
+    "value",
 }
 
 local function normalizeHeaderAlign(value, fallback)
@@ -281,6 +287,34 @@ local function getColumnDataInset(config, key, side)
     return math.max(0, tonumber(column.dataInsetLeft) or 0)
 end
 
+-- Copper as "12 34 56" followed by the gold, silver and copper coin icons; gold is left out when there
+-- is none, and once the first unit is shown every smaller unit follows (same rule as the tooltip price).
+local function formatCopperText(copper)
+    if not copper then
+        return "-"
+    end
+    copper = math.floor(copper)
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local rest = copper % 100
+    local g = "|TInterface/MoneyFrame/UI-GoldIcon:12:12:2:0|t"
+    local s = "|TInterface/MoneyFrame/UI-SilverIcon:12:12:2:0|t"
+    local c = "|TInterface/MoneyFrame/UI-CopperIcon:12:12:2:0|t"
+
+    if gold > 0 then
+        return string.format("%d%s %02d%s %02d%s", gold, g, silver, s, rest, c)
+    elseif silver > 0 then
+        return string.format("%d%s %02d%s", silver, s, rest, c)
+    end
+    return string.format("%d%s", rest, c)
+end
+
+-- The price text and the value text (price x session quantity) of a row.
+local function getEntryPriceTexts(entry)
+    local price = FWR.GetAuctionPrice and FWR:GetAuctionPrice(entry.itemID) or nil
+    return formatCopperText(price), formatCopperText(price and price * (tonumber(entry.quantityCount) or 0) or nil)
+end
+
 local function getRenderConfigForFrame(frame)
     if type(frame) == "table" and type(frame.renderColumnConfig) == "table" then
         return frame.renderColumnConfig
@@ -301,6 +335,8 @@ local DEFAULT_COLUMN_ORDER_KEYS = {
     "zone",
     "subZone",
     "character",
+    "price",
+    "value",
 }
 
 local COLUMN_WIDTH_KEY_BY_KEY = {
@@ -316,6 +352,8 @@ local COLUMN_WIDTH_KEY_BY_KEY = {
     zone = "zone",
     subZone = "subZone",
     character = "character",
+    price = "price",
+    value = "value",
 }
 
 local function getColumnOrderKeysForFrame(frame)
@@ -1245,6 +1283,58 @@ local function getNumericColumnMeta(frame, entries, elapsedSeconds)
 end
 
 
+-- The width each visible text column needs: its header or its widest text, whichever is wider, plus
+-- the column's insets. Only visible columns are measured.
+local TEXT_COLUMN_LABELS = {
+    itemType = function(entry) return getEntryItemTypeLabel(entry) end,
+    classification = function(entry) return getEntryClassificationLabel(entry) end,
+    activity = function(entry) return getEntryActivityLabel(entry) end,
+    expansion = function(entry) return getEntryExpansionLabel(entry) end,
+    zone = function(entry) return getEntryZoneLabel(entry) end,
+    subZone = function(entry) return getEntrySubZoneLabel(entry) end,
+    character = function(entry) return getEntryCharacterLabel(entry) end,
+}
+
+local function getTextColumnMeta(frame, entries, config)
+    local measure = ensureMeasureFontString(frame)
+    local needed = {}
+    if not measure then
+        return needed
+    end
+
+    local function measureText(text)
+        measure:SetText(text or "")
+        return measure:GetStringWidth() or 0
+    end
+
+    local function isVisible(key)
+        local column = type(config) == "table" and config[key] or nil
+        return type(column) == "table" and column.visible ~= false
+    end
+
+    local keys = { "itemType", "classification", "activity", "expansion", "zone", "subZone", "character", "price", "value" }
+    for _, key in ipairs(keys) do
+        if isVisible(key) then
+            needed[key] = measureText(config[key].label)
+        end
+    end
+
+    for _, entry in ipairs(entries or {}) do
+        for key, getLabel in pairs(TEXT_COLUMN_LABELS) do
+            if needed[key] then
+                needed[key] = math.max(needed[key], measureText(getLabel(entry)))
+            end
+        end
+        if needed.price or needed.value then
+            local priceText, valueText = getEntryPriceTexts(entry)
+            if needed.price then needed.price = math.max(needed.price, measureText(priceText)) end
+            if needed.value then needed.value = math.max(needed.value, measureText(valueText)) end
+        end
+    end
+
+    return needed
+end
+
 local DIVIDER_COLOR = { 0.54, 0.54, 0.58, 0.50 }
 
 local function ensureDividerTexture(owner, key, layer)
@@ -1369,6 +1459,8 @@ local function applyRowColumnLayout(row, frame)
     local zoneWidth = columnWidths.zone or 110
     local subZoneWidth = columnWidths.subZone or 110
     local characterWidth = columnWidths.character or 128
+    local priceWidth = columnWidths.price or 0
+    local valueWidth = columnWidths.value or 0
     local gap = columnWidths.gap or 2
     local itemTextWidth = columnWidths.itemText or nameWidth
     local numericMeta = columnWidths.numericMeta or {}
@@ -1386,6 +1478,8 @@ local function applyRowColumnLayout(row, frame)
         zone = columnWidths.zone,
         subZone = columnWidths.subZone,
         character = columnWidths.character,
+        price = columnWidths.price,
+        value = columnWidths.value,
         gap = columnWidths.gap,
         orderKeys = getColumnOrderKeysForFrame(frame),
     })
@@ -1401,6 +1495,8 @@ local function applyRowColumnLayout(row, frame)
     local x9 = positions.zone or x8
     local x10 = positions.subZone or x9
     local x11 = positions.character or x10
+    local x12 = positions.price or x11
+    local x13 = positions.value or x12
 
     local quantityLaneWidth = math.min(quantityWidth, math.max(18, (numericMeta.quantity and numericMeta.quantity.laneWidth) or quantityWidth))
     local totalLaneWidth = math.min(totalWidth, math.max(18, (numericMeta.total and numericMeta.total.laneWidth) or totalWidth))
@@ -1490,6 +1586,32 @@ local function applyRowColumnLayout(row, frame)
 
     applyTextColumnLayout(row.character, row, x11, characterWidth, getColumnDataAlign(getRenderConfigForFrame(frame), "character", "LEFT"), getColumnDataInset(getRenderConfigForFrame(frame), "character", "LEFT"), getColumnDataInset(getRenderConfigForFrame(frame), "character", "RIGHT"))
     if characterWidth <= 0 then row.character:Hide() end
+
+    applyTextColumnLayout(row.price, row, x12, priceWidth, getColumnDataAlign(getRenderConfigForFrame(frame), "price", "RIGHT"), getColumnDataInset(getRenderConfigForFrame(frame), "price", "LEFT"), getColumnDataInset(getRenderConfigForFrame(frame), "price", "RIGHT"))
+    if priceWidth <= 0 then row.price:Hide() end
+    if row.priceHitbox then
+        row.priceHitbox:ClearAllPoints()
+        if priceWidth > 0 then
+            row.priceHitbox:SetPoint("TOPLEFT", row, "TOPLEFT", x12, 0)
+            row.priceHitbox:SetPoint("BOTTOMRIGHT", row, "TOPLEFT", x12 + priceWidth, -getRowHeight(frame))
+            row.priceHitbox:Show()
+        else
+            row.priceHitbox:Hide()
+        end
+    end
+
+    applyTextColumnLayout(row.value, row, x13, valueWidth, getColumnDataAlign(getRenderConfigForFrame(frame), "value", "RIGHT"), getColumnDataInset(getRenderConfigForFrame(frame), "value", "LEFT"), getColumnDataInset(getRenderConfigForFrame(frame), "value", "RIGHT"))
+    if valueWidth <= 0 then row.value:Hide() end
+    if row.valueHitbox then
+        row.valueHitbox:ClearAllPoints()
+        if valueWidth > 0 then
+            row.valueHitbox:SetPoint("TOPLEFT", row, "TOPLEFT", x13, 0)
+            row.valueHitbox:SetPoint("BOTTOMRIGHT", row, "TOPLEFT", x13 + valueWidth, -getRowHeight(frame))
+            row.valueHitbox:Show()
+        else
+            row.valueHitbox:Hide()
+        end
+    end
 
     hideAllColumnDividers(row)
 end
@@ -1631,6 +1753,32 @@ local function ensureRow(frame, index)
         row.character:SetMaxLines(1)
     end
 
+    for _, key in ipairs({ "price", "value" }) do
+        local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetJustifyH("RIGHT")
+        text:SetTextColor(0.9, 0.9, 0.9, 1)
+        text:SetWordWrap(false)
+        if text.SetMaxLines then
+            text:SetMaxLines(1)
+        end
+        row[key] = text
+
+        local hitbox = CreateFrame("Frame", nil, row)
+        hitbox:SetFrameLevel(row:GetFrameLevel() + 5)
+        hitbox:EnableMouse(true)
+        hitbox:SetScript("OnEnter", function(box)
+            if box.tooltipText and FWR.ShowSimpleTooltip then
+                FWR:ShowSimpleTooltip(box, box.tooltipText)
+            end
+        end)
+        hitbox:SetScript("OnLeave", function()
+            if FWR.HideSimpleTooltip then
+                FWR:HideSimpleTooltip()
+            end
+        end)
+        row[key .. "Hitbox"] = hitbox
+    end
+
     frame.rows[index] = row
     applyRowColumnLayout(row, frame)
     return row
@@ -1645,6 +1793,7 @@ function FWR:UpdateDisplayColumnLayout(frame)
     local entries = getDisplayedEntries(FWR)
     local elapsedSeconds = getDisplayElapsedSeconds(FWR)
     local numericMeta = getNumericColumnMeta(frame, entries, elapsedSeconds)
+    local textMeta = getTextColumnMeta(frame, entries, config)
 
     local function resolveColumnWidth(key, columnConfig, fallbackWidth)
         local visible = true
@@ -1653,6 +1802,17 @@ function FWR:UpdateDisplayColumnLayout(frame)
         end
         if not visible then
             return 0
+        end
+
+        -- these columns are exactly as wide as their content (with a little room around it); the price
+        -- columns grow without limit, the other text columns never get wider than their set width
+        if textMeta[key] then
+            local insets = (tonumber(columnConfig.dataInsetLeft) or 0) + (tonumber(columnConfig.dataInsetRight) or 0)
+            local fitted = math.ceil(textMeta[key] + insets + 8)
+            if key ~= "price" and key ~= "value" then
+                fitted = math.min(fitted, tonumber(columnConfig.width) or tonumber(fallbackWidth) or fitted)
+            end
+            return math.max(18, fitted)
         end
 
         local baseWidth = tonumber(type(columnConfig) == "table" and columnConfig.width)
@@ -1711,6 +1871,8 @@ function FWR:UpdateDisplayColumnLayout(frame)
     local zoneWidth = resolveColumnWidth("zone", config.zone, 110)
     local subZoneWidth = resolveColumnWidth("subZone", config.subZone, 110)
     local characterWidth = resolveColumnWidth("character", config.character, 128)
+    local priceWidth = resolveColumnWidth("price", config.price, 84)
+    local valueWidth = resolveColumnWidth("value", config.value, 96)
     local gap = math.max(0, tonumber(config.gap) or 6)
     local nameWidth = resolveColumnWidth("item", config.item, 250)
     local itemTextWidth = math.max(20, nameWidth)
@@ -1727,6 +1889,8 @@ function FWR:UpdateDisplayColumnLayout(frame)
         zone = zoneWidth,
         subZone = subZoneWidth,
         character = characterWidth,
+        price = priceWidth,
+        value = valueWidth,
         gap = gap,
         orderKeys = getColumnOrderKeysForFrame(frame),
     })
@@ -1746,6 +1910,8 @@ function FWR:UpdateDisplayColumnLayout(frame)
         zone = zoneWidth,
         subZone = subZoneWidth,
         character = characterWidth,
+        price = priceWidth,
+        value = valueWidth,
         gap = gap,
         itemText = itemTextWidth,
         content = contentWidth,
@@ -1766,6 +1932,8 @@ function FWR:UpdateDisplayColumnLayout(frame)
     local x9 = resolvedLayout.zone or x8
     local x10 = resolvedLayout.subZone or x9
     local x11 = resolvedLayout.character or x10
+    local x12 = resolvedLayout.price or x11
+    local x13 = resolvedLayout.value or x12
 
     local quantityLaneWidth = math.min(quantityWidth, math.max(18, numericMeta.quantity.laneWidth or quantityWidth))
     local totalLaneWidth = math.min(totalWidth, math.max(18, numericMeta.total.laneWidth or totalWidth))
@@ -1813,6 +1981,8 @@ end
         if headers.zone and headers.zone.SetJustifyH then headers.zone:SetJustifyH(getColumnHeaderAlign(config, "zone", "LEFT")) end
         if headers.subZone and headers.subZone.SetJustifyH then headers.subZone:SetJustifyH(getColumnHeaderAlign(config, "subZone", "LEFT")) end
         if headers.character and headers.character.SetJustifyH then headers.character:SetJustifyH(getColumnHeaderAlign(config, "character", "LEFT")) end
+        if headers.price and headers.price.SetJustifyH then headers.price:SetJustifyH(getColumnHeaderAlign(config, "price", "CENTER")) end
+        if headers.value and headers.value.SetJustifyH then headers.value:SetJustifyH(getColumnHeaderAlign(config, "value", "CENTER")) end
 
         headers.name:ClearAllPoints()
         headers.name:SetPoint("LEFT", frame.columnsHeader, "LEFT", x1, 0)
@@ -1900,6 +2070,22 @@ end
             layoutColumnHeaderTooltipHitbox(frame, "character", x11, characterWidth, characterWidth > 0)
         end
 
+        if headers.price then
+            headers.price:ClearAllPoints()
+            headers.price:SetPoint("LEFT", frame.columnsHeader, "LEFT", x12, 0)
+            headers.price:SetWidth(priceWidth)
+            if priceWidth > 0 then headers.price:Show() else headers.price:Hide() end
+            layoutColumnHeaderTooltipHitbox(frame, "price", x12, priceWidth, priceWidth > 0)
+        end
+
+        if headers.value then
+            headers.value:ClearAllPoints()
+            headers.value:SetPoint("LEFT", frame.columnsHeader, "LEFT", x13, 0)
+            headers.value:SetWidth(valueWidth)
+            if valueWidth > 0 then headers.value:Show() else headers.value:Hide() end
+            layoutColumnHeaderTooltipHitbox(frame, "value", x13, valueWidth, valueWidth > 0)
+        end
+
         local dividerSpecs = buildVisibleDividerSpecs({
             name = nameWidth,
             quality = qualityWidth,
@@ -1913,6 +2099,8 @@ end
             zone = zoneWidth,
             subZone = subZoneWidth,
             character = characterWidth,
+            price = priceWidth,
+            value = valueWidth,
         }, resolvedLayout, getColumnOrderKeysForFrame(frame))
 
         hideAllColumnDividers(frame.columnsHeader)
@@ -2007,6 +2195,16 @@ local function clearHiddenRow(row)
     end
     if row.character then
         row.character:SetText("")
+    end
+    if row.price then
+        row.price:SetText("")
+    end
+    if row.value then
+        row.value:SetText("")
+    end
+    for _, hitbox in ipairs({ row.priceHitbox, row.valueHitbox }) do
+        hitbox.tooltipText = nil
+        hitbox:Hide()
     end
     if row.qualityText then
         row.qualityText:SetText("")
@@ -2141,6 +2339,19 @@ function FWR:RenderDisplayRows(frame)
             row.character:SetText(characterLabel)
             local classRed, classGreen, classBlue, classAlpha = getClassColorValues(entry.characterClassFile)
             row.character:SetTextColor(classRed, classGreen, classBlue, classAlpha or 1)
+        end
+
+        if row.price and row.value then
+            -- the Auction House price of one item, and its worth for what was collected this session
+            local priceText, valueText = getEntryPriceTexts(entry)
+            row.price:SetText(priceText)
+            row.value:SetText(valueText)
+
+            -- each cell shows what the other one is: the price cell the total value, the value cell the price of one item
+            local hasPrice = priceText ~= "-"
+            local quantity = tonumber(entry.quantityCount) or 0
+            row.priceHitbox.tooltipText = hasPrice and (valueText .. "\nWhat the " .. quantity .. " collected this session are worth: the quantity times this price.") or nil
+            row.valueHitbox.tooltipText = hasPrice and ("Price per item\n" .. priceText .. " each\nThe value is this price times the session quantity (" .. quantity .. ").") or nil
         end
 
         applyQualityDisplay(row, entry.itemQuality)
@@ -2381,6 +2592,8 @@ function FWR:GetResolvedMainFrameContentWidth()
         zone = resolveStaticWidth(config.zone, 0),
         subZone = resolveStaticWidth(config.subZone, 0),
         character = resolveStaticWidth(config.character, 0),
+        price = resolveStaticWidth(config.price, 0),
+        value = resolveStaticWidth(config.value, 0),
         gap = math.max(0, tonumber(config.gap) or 1),
     }
     return buildResolvedColumnLayout(widths).content
@@ -2413,6 +2626,8 @@ function FWR:GetMinimumMainFrameContentWidth()
         zone = 0,
         subZone = 0,
         character = 0,
+        price = 0,
+        value = 0,
         gap = math.max(0, tonumber(config.gap) or 1),
     }
     return buildResolvedColumnLayout(widths).content
@@ -2432,8 +2647,8 @@ function FWR:GetDisplayRenderConfig()
     return FULL_COLUMN_CONFIG
 end
 
-local REORDERABLE_MAIN_COLUMNS = { "quantity", "total", "itemPerHour", "activity", "itemType", "classification", "expansion", "zone", "subZone", "character" }
-local OPTIONAL_MAIN_COLUMNS = { "quantity", "total", "itemPerHour", "activity", "itemType", "classification", "expansion", "zone", "subZone", "character" }
+local REORDERABLE_MAIN_COLUMNS = { "quantity", "total", "itemPerHour", "activity", "itemType", "classification", "expansion", "zone", "subZone", "character", "price", "value" }
+local OPTIONAL_MAIN_COLUMNS = { "quantity", "total", "itemPerHour", "activity", "itemType", "classification", "expansion", "zone", "subZone", "character", "price", "value" }
 local DEFAULT_MAIN_COLUMN_ORDER = {
     quantity = 2,
     total = 3,
@@ -2445,6 +2660,8 @@ local DEFAULT_MAIN_COLUMN_ORDER = {
     zone = 9,
     subZone = 10,
     character = 11,
+    price = 12,
+    value = 13,
 }
 
 function FWR:NormalizeDisplayColumnSettings()
@@ -2630,6 +2847,8 @@ function FWR:ApplyDisplaySettings()
             if host.columnHeaders.zone then host.columnHeaders.zone:SetText((config.zone and config.zone.label) or "Zone") end
             if host.columnHeaders.subZone then host.columnHeaders.subZone:SetText((config.subZone and config.subZone.label) or "Sub-Zone") end
             if host.columnHeaders.character then host.columnHeaders.character:SetText((config.character and config.character.label) or "Character") end
+            if host.columnHeaders.price then host.columnHeaders.price:SetText((config.price and config.price.label) or "Price") end
+            if host.columnHeaders.value then host.columnHeaders.value:SetText((config.value and config.value.label) or "Value") end
         end
 
         if self.UpdateDisplayColumnLayout then

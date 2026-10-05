@@ -7,7 +7,7 @@ FarmWiseReforged = FWR
 --
 --   FarmWiseDB["Zone - SubZone"] = {
 --       items = { ["itemID|Qn"] = { id, name, count, quality, itemQuality, exp, prof } },
---       gold = copper looted, vendor = copper of vendor value looted, time = seconds,
+--       gold = copper looted, vendor = copper of scrap (poor quality) vendor value looted, time = seconds,
 --       daily = { date, items = { key = count }, gold, vendor, time },
 --       zone = "Zone", subzone = "SubZone",   -- added by this version, absent in old entries
 --   }
@@ -25,6 +25,7 @@ local CONFIDENCE_HIGH_SECONDS = 60 * 60
 
 -- The Auction House keeps 5% of every sale.
 local AUCTION_HOUSE_CUT = 0.05
+FWR.AUCTION_HOUSE_CUT = AUCTION_HOUSE_CUT   -- the main window's session gold uses the same cut
 
 local DEFAULT_ADVISOR_SETTINGS = {
     currentExpansionOnly = true,   -- ignore items older than the current expansion
@@ -249,7 +250,7 @@ function FWR:RecordAdvisorGold(copper)
     data.daily.gold = data.daily.gold + copper
 end
 
--- Vendor value of looted items that are not trade materials. The zone is the one the item
+-- Vendor value of looted scrap (poor quality items). The zone is the one the item
 -- was looted in, which can differ from the live one when item data arrives late.
 function FWR:RecordAdvisorVendor(copper, zone, subzone)
     copper = tonumber(copper) or 0
@@ -561,7 +562,7 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, inclu
     return sortResults(results, "perHour")
 end
 
--- Estimated gold per hour per place: looted gold + vendor value of other loot + Auction House
+-- Estimated gold per hour per place: looted gold + vendor value of scrap + Auction House
 -- value of the materials (after the Auction House cut).
 function FWR:BuildAdvisorGoldResults()
     local ahStore = FarmWiseDB and FarmWiseDB._ah

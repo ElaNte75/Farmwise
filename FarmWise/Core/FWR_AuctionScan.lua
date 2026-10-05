@@ -2,8 +2,8 @@ local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
 -- Auction House scan.
--- Reads the lowest price of every trade good (current expansion only when the game supports that
--- filter) straight from the Auction House and stores it in FarmWiseDB._ah, which the Advisor
+-- Reads the lowest price of every trade good (or of every item, when the whole-Auction-House option
+-- is on) straight from the Auction House and stores it in FarmWiseDB._ah, which the Advisor
 -- uses for gold per hour. It runs automatically when the Auction House opens and the last scan
 -- is older than the update interval chosen in the Auction House settings.
 
@@ -12,7 +12,9 @@ local TRADEGOODS_CLASS_ID = (Enum and Enum.ItemClass and Enum.ItemClass.Tradegoo
 
 local START_DELAY_SECONDS = 0.5
 local MIN_SECONDS_BETWEEN_SCANS = 15 * 60
-local RESULT_TIMEOUT_SECONDS = 8
+local RESULT_TIMEOUT_SECONDS = 8   -- waiting for the first answer
+local BATCH_TIMEOUT_SECONDS = 15   -- waiting for the next batch of an answer that already started
+local MAX_ATTEMPTS = 3
 local MORE_RESULTS_RETRY_SECONDS = 0.3
 local MORE_RESULTS_RETRY_LIMIT = 40
 local THROTTLE_RETRY_SECONDS = 1
@@ -133,16 +135,21 @@ function FWR:GetAuctionSyncAgeText()
     return text, 1, 0.3, 0.3
 end
 
--- All trade materials of every expansion. The game returns nothing when the "current expansion"
--- filter is combined with an item class, so the Advisor filters by expansion itself.
-local function buildQuery()
+local function isFullScan(self)
+    return getSettings(self).fullScan == true
+end
+
+-- All trade materials of every expansion, or everything when the whole-Auction-House option is on.
+-- The game returns nothing when the "current expansion" filter is combined with an item class, so
+-- the Advisor filters by expansion itself.
+local function buildQuery(self)
     local sortOrder = (Enum and Enum.AuctionHouseSortOrder and Enum.AuctionHouseSortOrder.Price) or 0
 
     return {
         searchString = "",
         sorts = { { sortOrder = sortOrder, reverseSort = false } },
         filters = {},
-        itemClassFilters = { { classID = TRADEGOODS_CLASS_ID } },
+        itemClassFilters = (not isFullScan(self)) and { { classID = TRADEGOODS_CLASS_ID } } or nil,
         separateOwnerItems = false,
     }
 end
@@ -163,11 +170,15 @@ local function abortScan(self, message)
     refreshPanels(self)
 end
 
--- The game also sends its own queries when the Auction House opens. Only a list made purely of
--- trade materials can be the answer to our query; anything else is ignored.
-local function isTradeGoodsList(results)
+-- The game also sends its own queries when the Auction House opens. For the normal scan only a list
+-- made purely of trade materials can be the answer to our query; anything else is ignored.
+local function isExpectedList(self, results)
     if #results == 0 then
         return false
+    end
+
+    if isFullScan(self) then
+        return true
     end
 
     for _, result in ipairs(results) do
@@ -185,24 +196,25 @@ end
 
 local sendQuery
 
--- Watchdog: every sign of life re-arms it. If nothing happens for RESULT_TIMEOUT_SECONDS the query is
--- repeated once (another addon may have replaced it) and then the scan gives up with a message.
-local function watch(self)
+-- Watchdog: every sign of life re-arms it. If nothing happens in time the whole scan is started again
+-- (another addon may have replaced the query, or the game was busy), up to MAX_ATTEMPTS times, and
+-- then it gives up with a message that says how far it got.
+local function watch(self, seconds)
     scan.activity = scan.activity + 1
     local seen = scan.activity
 
-    C_Timer.After(RESULT_TIMEOUT_SECONDS, function()
+    C_Timer.After(seconds or RESULT_TIMEOUT_SECONDS, function()
         if not scan.running or scan.activity ~= seen then
             return
         end
 
-        if not scan.gotResults and scan.attempt < 2 then
+        if scan.attempt < MAX_ATTEMPTS then
             scan.attempt = scan.attempt + 1
             sendQuery(FWR)
         elseif scan.gotResults then
-            abortScan(FWR, "The Auction House stopped answering before the scan finished. Prices were not updated.")
+            abortScan(FWR, string.format("The Auction House stopped answering after %d items. Prices were not updated (/fw scan to try again).", scan.found))
         else
-            abortScan(FWR, "The Auction House returned no trade materials. Try again in a moment (/fw scan).")
+            abortScan(FWR, "The Auction House returned no items. Try again in a moment (/fw scan).")
         end
     end)
 end
@@ -210,7 +222,7 @@ end
 sendQuery = function(self)
     scan.gotResults = false
 
-    local ok, err = pcall(C_AuctionHouse.SendBrowseQuery, buildQuery())
+    local ok, err = pcall(C_AuctionHouse.SendBrowseQuery, buildQuery(self))
     if not ok then
         abortScan(self, "The Auction House scan could not start: " .. tostring(err))
         return false
@@ -247,7 +259,7 @@ local function startNow(self)
     scan.attempt = 1
 
     if sendQuery(self) then
-        say("Auction House scan started (trade materials only). Keep the Auction House open until it finishes. " .. self:GetAuctionScanEstimateText())
+        say("Auction House scan started (" .. (isFullScan(self) and "whole Auction House" or "trade materials only") .. "). Keep the Auction House open until it finishes. " .. self:GetAuctionScanEstimateText())
         refreshPanels(self)
     end
 end
@@ -326,7 +338,7 @@ local function finishScan(self, results)
     store.lastScanSeconds = seconds
 
     scan.running = false
-    say(string.format("Auction House scan complete: %d materials priced in %d seconds.", priced, seconds))
+    say(string.format("Auction House scan complete: %d items priced in %d seconds.", priced, seconds))
 
     playFinishedSound(getSettings(self))
     refreshPanels(self)
@@ -338,7 +350,7 @@ local function handleBrowseResults(self)
     end
 
     local results = C_AuctionHouse.GetBrowseResults() or {}
-    if not isTradeGoodsList(results) then
+    if not isExpectedList(self, results) then
         return
     end
 
@@ -350,7 +362,7 @@ local function handleBrowseResults(self)
         return
     end
 
-    watch(self)
+    watch(self, BATCH_TIMEOUT_SECONDS)
     requestMore(self, 1)
     refreshPanels(self)
 end

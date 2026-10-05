@@ -146,15 +146,33 @@ function FWR:SumViewScopeSeconds(scope)
     return totalSeconds, sessionSeconds
 end
 
--- Total and session looted copper inside the scope.
+-- Session copper inside the scope: money looted from mobs, and the vendor value of scrap.
 function FWR:SumViewScopeGold(scope)
     local ledger = self.DB and self.DB.goldLedger
-    local totalCopper, sessionCopper = 0, 0
+    local rawCopper, scrapCopper = 0, 0
     self:ForEachInViewScope(ledger and ledger.byContextKey, scope, function(_, bucket)
-        totalCopper = totalCopper + math.max(0, tonumber(bucket.rawLootCopperTotal) or 0)
-        sessionCopper = sessionCopper + math.max(0, tonumber(bucket.rawLootCopperSession) or 0)
+        rawCopper = rawCopper + math.max(0, tonumber(bucket.rawLootCopperSession) or 0)
+        scrapCopper = scrapCopper + math.max(0, tonumber(bucket.scrapCopperSession) or 0)
     end)
-    return totalCopper, sessionCopper
+    return rawCopper, scrapCopper
+end
+
+-- Auction House value (before the cut) of the trade materials collected this session inside the scope.
+function FWR:SumViewScopeMaterialsValue(scope)
+    local render = self.DB and self.DB.renderState
+    local copper = 0
+    self:ForEachInViewScope(render and render.displayBasketByContext, scope, function(_, basket)
+        for _, entry in pairs(type(basket.byKey) == "table" and basket.byKey or {}) do
+            local quantity = type(entry) == "table" and tonumber(entry.quantityCount) or 0
+            if quantity > 0 then
+                local price = self:GetAuctionPrice(entry.itemID, true)
+                if price then
+                    copper = copper + price * quantity
+                end
+            end
+        end
+    end)
+    return copper
 end
 
 -- Makes an entry's zone fields describe the context it is stored in.
