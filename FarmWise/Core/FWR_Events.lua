@@ -13,6 +13,7 @@ FarmWiseReforged = FWR
 --   vendorValueRecorded(copper, zone, subzone)  vendor value of looted scrap (poor quality items)
 --   areaChanged(contextKey)          the player moved to another zone or sub-zone
 --   combatChanged(inCombat)          the player entered or left combat
+--   processingUsed(key)              a disenchant, milling or prospecting was used (key: disenchant, milling, prospecting)
 --   dataCleared()                    the user erased all saved data
 
 local subscribers = {}

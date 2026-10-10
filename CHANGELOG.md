@@ -20,9 +20,12 @@ one grows when settings or behaviour change.
 - Zone name starts exactly where "Total:" starts. Smaller IDLE text.
 - Advisor: amounts use the game's gold and silver coin pictures and are rounded to whole gold. "Looted gold" and
   "Vendor items" are now one line, "Raw gold" (money from mobs plus scrap). In Item mode every result shows
-  what the yield is worth per hour at the current Auction House prices.
+  the price of one item at the Auction House and, in brackets, what the whole hourly yield is worth.
 - Advisor, Item mode: without "Include quality" all qualities of an item are now one line (before, each quality was a
   separate unlabeled line); with it, each quality shows separately with its own worth. "Include quality" is now on by default.
+- Advisor, Item mode: what disenchanting, milling and prospecting give is shown on its own rows ("Processing"):
+  how many times you used it, what you got in total and per use, and the price of each result. These results are
+  no longer listed as "best place" items, since a place does not matter for them.
 - Explanations (tooltips) for the new options.
 
 ## 4.0.0 beta

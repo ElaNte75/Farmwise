@@ -173,14 +173,69 @@ function FWR:GetAdvisorStatus()
     return { zones = zones, items = items }
 end
 
--- Erases every zone entry. Advisor preferences, old settings and the AH price snapshot stay.
+-- Erases every zone entry and the processing statistics. Advisor preferences, old settings and the AH
+-- price snapshot stay.
 function FWR:ClearAdvisorData()
-    local db = self:EnsureAdvisorStore()
+    local db, settings = self:EnsureAdvisorStore()
+    settings.processing = nil
     for key in pairs(db) do
         if not isMetaKey(key) then
             db[key] = nil
         end
     end
+end
+
+------------------------------------------------------------
+-- Processing (disenchant, milling, prospecting)
+-- What these give is not tied to a place or to time: what counts is how much one use gives. So the
+-- uses and the results are kept per process, separately from the places.
+--   _advisor.processing[key] = { uses = n, items = { ["id|Qn"] = { id, name, quality, count, exp } } }
+------------------------------------------------------------
+
+local PROCESS_LABELS = { disenchant = "Disenchant", milling = "Milling", prospecting = "Prospecting" }
+
+local function getProcess(key, create)
+    local _, settings = FWR:EnsureAdvisorStore()
+    if type(settings.processing) ~= "table" then
+        if not create then
+            return nil
+        end
+        settings.processing = {}
+    end
+
+    local process = settings.processing[key]
+    if type(process) ~= "table" then
+        if not create then
+            return nil
+        end
+        process = { uses = 0, items = {} }
+        settings.processing[key] = process
+    end
+    process.uses = tonumber(process.uses) or 0
+    process.items = type(process.items) == "table" and process.items or {}
+    return process
+end
+
+function FWR:RecordAdvisorProcessingUse(key)
+    if not PROCESS_LABELS[key] then
+        return
+    end
+    local process = getProcess(key, true)
+    process.uses = process.uses + 1
+end
+
+-- Item IDs that have been seen as the result of a processing: they are not "farmed" in a place.
+local function processingResultIds()
+    local _, settings = FWR:EnsureAdvisorStore()
+    local ids = {}
+    for _, process in pairs(type(settings.processing) == "table" and settings.processing or {}) do
+        for _, info in pairs(type(process) == "table" and process.items or {}) do
+            if info.id then
+                ids[tonumber(info.id)] = true
+            end
+        end
+    end
+    return ids
 end
 
 -- Called for every loot entry that passed the Reforged filters.
@@ -223,6 +278,22 @@ function FWR:RecordAdvisorItem(entry, quantity)
     info.prof = entry.baseProfession or info.prof
     info.count = (tonumber(info.count) or 0) + amount
     data.daily.items[key] = (data.daily.items[key] or 0) + amount
+
+    -- the result of a disenchant, milling or prospecting is also counted per process
+    if entry.activityKey == "processing" and self.GetActiveProcessingKey then
+        local processKey = self:GetActiveProcessingKey()
+        if processKey then
+            local process = getProcess(processKey, true)
+            local result = process.items[key]
+            if not result then
+                result = { id = itemID, name = entry.itemName, count = 0, quality = label }
+                process.items[key] = result
+            end
+            result.name = entry.itemName or result.name
+            result.exp = tonumber(entry.expansionID) or result.exp
+            result.count = (tonumber(result.count) or 0) + amount
+        end
+    end
 end
 
 -- Called with the number of seconds of active farming time.
@@ -386,10 +457,11 @@ end
 
 -- Groups all stored data per zone + sub-zone.
 -- explicitItemID bypasses the expansion/profession filters for a specific item search.
-local function buildGroups(explicitItemID)
+local function buildGroups(explicitItemID, leaveOutProcessing)
     local db, settings = FWR:EnsureAdvisorStore()
     local currentExpansion = getCurrentExpansion()
     local known = getKnownProfessionSkillLines()
+    local processed = leaveOutProcessing and processingResultIds() or {}
     local groups = {}
 
     for key, data in pairs(db) do
@@ -402,8 +474,8 @@ local function buildGroups(explicitItemID)
             group.vendor = tonumber(data.vendor) or 0
 
             for itemKey, info in pairs(data.items) do
-                local include = true
-                if not explicitItemID then
+                local include = not processed[tonumber(info.id)]
+                if include and not explicitItemID then
                     if settings.currentExpansionOnly and currentExpansion then
                         local expansion = resolveItemExpansion(info)
                         include = expansion ~= nil and expansion >= currentExpansion
@@ -500,7 +572,7 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, inclu
         return {}
     end
 
-    local groups = buildGroups(true)
+    local groups = buildGroups(true, true)
 
     local restriction = self:GetAdvisorItemRestriction(itemID or findStoredItemID(groups, name))
     if restriction then
@@ -513,6 +585,7 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, inclu
         if group.time >= self.ADVISOR_MIN_SECONDS then
             local count = 0
             local value = 0
+            local matchedIds, matchedIdCount = {}, 0
             local matchedName = nil
             for _, info in pairs(group.items) do
                 local matches
@@ -527,6 +600,10 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, inclu
                 if matches then
                     count = count + info.count
                     matchedName = info.name
+                    if not matchedIds[info.id] then
+                        matchedIds[info.id] = true
+                        matchedIdCount = matchedIdCount + 1
+                    end
                     local price = self:GetAuctionPrice(info.id, true)
                     if price then
                         value = value + price * info.count
@@ -541,7 +618,9 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, inclu
                     totalTime = group.time,
                     count = count,
                     perHour = math.floor((count / group.time) * 3600),
-                    valuePerHour = value > 0 and (value * (1 - AUCTION_HOUSE_CUT) / group.time * 3600) or nil,
+                    valuePerHour = value > 0 and (value / group.time * 3600) or nil,
+                    unitPrice = value > 0 and (value / count) or nil,
+                    averaged = matchedIdCount > 1,
                     itemName = matchedName,
                     confidence = label,
                     confidenceColor = { r, g, b },
@@ -612,7 +691,7 @@ end
 function FWR:BuildAdvisorItemOverview(includeQuality)
     local best = {}
 
-    for _, group in pairs(buildGroups(false)) do
+    for _, group in pairs(buildGroups(false, true)) do
         if group.time >= self.ADVISOR_MIN_SECONDS then
             local perItem = {}
             for _, info in pairs(group.items) do
@@ -621,10 +700,14 @@ function FWR:BuildAdvisorItemOverview(includeQuality)
                 local key = includeQuality and (tostring(info.id) .. "|" .. tostring(info.quality)) or (normalizeName(info.name) or tostring(info.id))
                 local entry = perItem[key]
                 if not entry then
-                    entry = { name = info.name, quality = includeQuality and info.quality or nil, count = 0, value = 0 }
+                    entry = { name = info.name, quality = includeQuality and info.quality or nil, count = 0, value = 0, ids = {}, idCount = 0 }
                     perItem[key] = entry
                 end
                 entry.count = entry.count + info.count
+                if not entry.ids[info.id] then
+                    entry.ids[info.id] = true
+                    entry.idCount = entry.idCount + 1
+                end
                 local price = self:GetAuctionPrice(info.id, true)
                 if price then
                     entry.value = entry.value + price * info.count
@@ -644,7 +727,9 @@ function FWR:BuildAdvisorItemOverview(includeQuality)
                             totalTime = group.time,
                             count = entry.count,
                             perHour = perHour,
-                            valuePerHour = entry.value > 0 and (entry.value * (1 - AUCTION_HOUSE_CUT) / group.time * 3600) or nil,
+                            valuePerHour = entry.value > 0 and (entry.value / group.time * 3600) or nil,
+                            unitPrice = entry.value > 0 and (entry.value / entry.count) or nil,
+                            averaged = entry.idCount > 1,
                             confidence = label,
                             confidenceColor = { r, g, b },
                         }
@@ -739,4 +824,101 @@ end
 
 function FWR:GetStarterGuideVersion()
     return self.STARTER_GUIDE and self.STARTER_GUIDE.version or nil
+end
+
+-- What each processing (disenchant, milling, prospecting) gave, per use. Returns a list, most used first:
+--   { key, label, uses, valuePerUse (copper, nil without prices),
+--     outputs = { { name, quality, count, perUse, unitPrice, value }, ... } }  best paid first
+-- includeQuality false adds up the qualities of an item. With a query (or an exact item) only the matching
+-- results are listed.
+function FWR:BuildAdvisorProcessingResults(includeQuality, queryText, exactItemID, exactQuality)
+    local _, settings = self:EnsureAdvisorStore()
+    local processing = type(settings.processing) == "table" and settings.processing or {}
+    local currentExpansion = settings.currentExpansionOnly and getCurrentExpansion() or nil
+
+    local searchID, searchName, searchQuality
+    if queryText and queryText ~= "" then
+        searchID, searchName, searchQuality = self:ParseAdvisorQuery(queryText)
+        searchID = exactItemID or searchID
+        searchQuality = exactQuality or searchQuality
+        if not includeQuality then
+            searchQuality = nil
+        end
+    elseif exactItemID then
+        searchID = exactItemID
+    end
+
+    local rows = {}
+    for key, label in pairs(PROCESS_LABELS) do
+        local process = processing[key]
+        local uses = type(process) == "table" and tonumber(process.uses) or 0
+        if uses > 0 then
+            local grouped = {}
+            for _, info in pairs(process.items or {}) do
+                local include = true
+                if currentExpansion then
+                    local expansion = resolveItemExpansion(info)
+                    include = expansion ~= nil and expansion >= currentExpansion
+                end
+                if include and searchID then
+                    include = tonumber(info.id) == searchID
+                elseif include and searchName and searchName ~= "" then
+                    include = normalizeName(info.name) == searchName
+                end
+                if include and searchQuality then
+                    include = string.upper(info.quality or "") == searchQuality
+                end
+
+                if include then
+                    local groupKey = includeQuality and (tostring(info.id) .. "|" .. tostring(info.quality)) or (normalizeName(info.name) or tostring(info.id))
+                    local output = grouped[groupKey]
+                    if not output then
+                        output = { name = info.name, quality = includeQuality and info.quality or nil, count = 0, value = 0 }
+                        grouped[groupKey] = output
+                    end
+                    local count = tonumber(info.count) or 0
+                    output.count = output.count + count
+                    local price = self:GetAuctionPrice(info.id, true)
+                    if price then
+                        output.value = output.value + price * count
+                    end
+                end
+            end
+
+            local outputs = {}
+            local totalValue = 0
+            for _, output in pairs(grouped) do
+                if output.count > 0 then
+                    output.perUse = output.count / uses
+                    output.unitPrice = output.value > 0 and (output.value / output.count) or nil
+                    totalValue = totalValue + output.value
+                    outputs[#outputs + 1] = output
+                end
+            end
+
+            if #outputs > 0 then
+                table.sort(outputs, function(a, b)
+                    if a.value == b.value then
+                        return a.count > b.count
+                    end
+                    return a.value > b.value
+                end)
+                rows[#rows + 1] = {
+                    key = key,
+                    label = label,
+                    uses = uses,
+                    valuePerUse = totalValue > 0 and (totalValue / uses) or nil,
+                    outputs = outputs,
+                }
+            end
+        end
+    end
+
+    table.sort(rows, function(a, b)
+        if a.uses == b.uses then
+            return a.label < b.label
+        end
+        return a.uses > b.uses
+    end)
+    return rows
 end

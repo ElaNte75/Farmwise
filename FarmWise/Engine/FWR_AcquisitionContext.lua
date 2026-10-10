@@ -5,9 +5,9 @@ local PROCESSING_WINDOW_SECONDS = 4.0
 local CRAFTING_WINDOW_SECONDS = 4.0
 
 local PROCESSING_SPELLS = {
-    [13262] = { profession = "Enchanting", activity = "processing" }, -- Disenchant
-    [51005] = { profession = "Inscription", activity = "processing" }, -- Milling
-    [31252] = { profession = "Jewelcrafting", activity = "processing" }, -- Prospecting
+    [13262] = { profession = "Enchanting", activity = "processing", key = "disenchant" },
+    [51005] = { profession = "Inscription", activity = "processing", key = "milling" },
+    [31252] = { profession = "Jewelcrafting", activity = "processing", key = "prospecting" },
 }
 
 local CRAFTED_OUTPUT_WINDOW_SECONDS = 10.0
@@ -87,6 +87,14 @@ function FWR:HandleProcessingSpellcastSucceeded(unitToken, castGUID, spellID)
     end
 
     self:BeginAcquisitionContext("processing", PROCESSING_WINDOW_SECONDS, spellID, spellData.profession)
+    self:Emit("processingUsed", spellData.key)
+end
+
+-- "disenchant", "milling" or "prospecting" while the result of one of them is arriving, else nil.
+function FWR:GetActiveProcessingKey()
+    local ctx = self:GetActiveAcquisitionContext()
+    local spellData = ctx and ctx.activeType == "processing" and PROCESSING_SPELLS[tonumber(ctx.spellID)] or nil
+    return spellData and spellData.key or nil
 end
 
 function FWR:HandleTradeSkillItemCraftedResult(...)

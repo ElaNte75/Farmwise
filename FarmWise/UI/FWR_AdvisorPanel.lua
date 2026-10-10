@@ -72,13 +72,15 @@ local function formatGold(copper)
     return groupThousands(math.floor(copper / 10000 + 0.5)) .. GOLD_LETTER
 end
 
--- Price of one item: gold with one decimal, or silver for cheap items.
+-- Price of one item: gold with up to two decimals and a decimal comma (1,35), as exact as the Auction House
+-- price; a whole price has no decimals (1). The dot is already the thousands separator.
 local function formatPrice(copper)
-    copper = tonumber(copper) or 0
-    if copper >= 10000 then
-        return string.format("%.1f", copper / 10000) .. GOLD_LETTER
-    end
-    return string.format("%d", math.floor(copper / 100)) .. SILVER_LETTER
+    local gold = (tonumber(copper) or 0) / 10000
+    local text = string.format("%.2f", gold)
+    text = text:gsub("0+$", "")
+    text = text:gsub("[.]$", "")
+    text = text:gsub("[.]", ",")
+    return text .. GOLD_LETTER
 end
 
 local function truncate(text, limit)
@@ -178,6 +180,61 @@ local function confidenceText(result)
     return "Confidence: " .. (result.confidence or "-"), result.confidenceColor
 end
 
+-- Item mode, last line: what one item costs, so nobody has to do the sum, and in brackets what the whole
+-- yield of an hour is worth. When several qualities are added up, the price of one is their average.
+local function priceLine(result)
+    if not result.unitPrice then
+        return ""
+    end
+    return string.format("\n%s: %s each  (%s per hour)",
+        result.averaged and "Average price" or "Price", formatPrice(result.unitPrice), formatGold(result.valuePerHour))
+end
+
+-- A disenchant, milling or prospecting: no place and no time, only what one use gives.
+local function formatRate(value)
+    if value >= 10 then
+        return string.format("%d", math.floor(value + 0.5))
+    elseif value >= 1 then
+        return (string.format("%.1f", value):gsub("[.]", ","))
+    end
+    return (string.format("%.2f", value):gsub("[.]", ","))
+end
+
+local function processingRow(result)
+    local lines = { string.format("Used %d times", result.uses) }
+    for index = 1, math.min(#result.outputs, 2) do
+        local output = result.outputs[index]
+        local name = truncate(output.name or "?", 26)
+        if output.quality then
+            name = string.format("%s (%s)", name, output.quality)
+        end
+        local line = string.format("%s: %d  (%s per use)", name, output.count, formatRate(output.perUse))
+        if output.unitPrice then
+            line = line .. string.format("  -  %s each", formatPrice(output.unitPrice))
+        end
+        lines[#lines + 1] = line
+    end
+    if result.valuePerUse then
+        lines[#lines + 1] = string.format("Worth per use: %s", formatPrice(result.valuePerUse))
+    end
+
+    return {
+        title = result.label,
+        right = "Processing",
+        rightColor = GUIDE_TAG_COLOR,
+        stats = table.concat(lines, "\n"),
+    }
+end
+
+local function processingRows(query)
+    local rows = {}
+    local quality = includeQuality() and exactQuality or nil
+    for _, result in ipairs(FWR:BuildAdvisorProcessingResults(includeQuality(), query, exactItemID, quality)) do
+        rows[#rows + 1] = processingRow(result)
+    end
+    return rows
+end
+
 local function placeRow(result)
     local right, rightColor = confidenceText(result)
     local stats
@@ -190,9 +247,7 @@ local function placeRow(result)
         stats = string.format(
             "Farming time: %s\nGathered: %d items\nAverage yield: %d/hour",
             formatTime(result.totalTime), result.count, result.perHour)
-        if result.valuePerHour then
-            stats = stats .. string.format("\nWorth: %s  per hour at the Auction House", formatGold(result.valuePerHour))
-        end
+        stats = stats .. priceLine(result)
     end
     return { title = result.zone, right = right, rightColor = rightColor, stats = stats }
 end
@@ -206,9 +261,7 @@ local function overviewRow(result)
     local stats = string.format(
         "Best place: %s\nFarming time: %s\nAverage yield: %d/hour",
         truncate(result.zone, MAX_STAT_CHARS - 12), formatTime(result.totalTime), result.perHour)
-    if result.valuePerHour then
-        stats = stats .. string.format("\nWorth: %s  per hour at the Auction House", formatGold(result.valuePerHour))
-    end
+    stats = stats .. priceLine(result)
     return { title = title, right = right, rightColor = rightColor, stats = stats }
 end
 
@@ -276,6 +329,9 @@ local function buildView()
         for _, result in ipairs(FWR:BuildAdvisorItemOverview(includeQuality())) do
             rows[#rows + 1] = overviewRow(result)
         end
+        for _, row in ipairs(processingRows("")) do
+            rows[#rows + 1] = row
+        end
         if #rows > 0 then
             return rows, "Your best yields so far, ranked by quantity per hour (not by value). Search an item for its best places.", MUTED_COLOR
         end
@@ -287,6 +343,9 @@ local function buildView()
     local rows = {}
     for _, result in ipairs(results) do
         rows[#rows + 1] = placeRow(result)
+    end
+    for _, row in ipairs(processingRows(query)) do
+        rows[#rows + 1] = row
     end
     if #rows > 0 then
         return rows, "", MUTED_COLOR
