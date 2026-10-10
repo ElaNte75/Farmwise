@@ -156,7 +156,8 @@ local function layoutMainFrameHeader(frame)
                 return groupLeft
             end
 
-            local zoneLeft = placeOver(zoneWidth, totalLeft, totalRight)
+            -- the zone name starts exactly where "Total:" starts and extends to the right
+            local zoneLeft = totalLeft
 
             -- the dash stays above the dash below; a long zone pushes it, and the sub-zone, to the right
             frame.runtimeSeparator:SetJustifyH("CENTER")
@@ -807,7 +808,9 @@ local function ensureIdleBlinker(self)
     end)
 end
 
-function FWR:RefreshMainWindowText()
+-- light = only what time changes (clocks, gold per hour, item / hour); the places and items are not
+-- walked again and the list is not rebuilt.
+local function refreshMainWindow(self, light)
     if not self.MainFrame then
         return
     end
@@ -816,63 +819,68 @@ function FWR:RefreshMainWindowText()
     local zoneText = self.GetLiveZoneText and self:GetLiveZoneText() or ((elements.zone and elements.zone.text) or "Zone Placeholder")
     local subzoneText = (self.IsSubZoneDataEnabled and self:IsSubZoneDataEnabled() and self.GetLiveSubzoneText and self:GetLiveSubzoneText()) or ""
     local hasSubzone = type(subzoneText) == "string" and subzoneText ~= ""
-    local totalTimeValueText = self.GetLiveTotalTimeValueText and self:GetLiveTotalTimeValueText() or "00:00"
-    local sessionTimeValueText = self.GetLiveSessionTimeValueText and self:GetLiveSessionTimeValueText() or "00:00"
+    local totalSeconds, sessionSeconds = self:SumViewScopeSeconds()
+    local totalTimeValueText = self.GetLiveTotalTimeValueText and self:GetLiveTotalTimeValueText(totalSeconds) or "00:00"
+    local sessionTimeValueText = self.GetLiveSessionTimeValueText and self:GetLiveSessionTimeValueText(sessionSeconds) or "00:00"
     local idleText = self.GetIdleIndicatorText and self:GetIdleIndicatorText() or ((elements.idle and elements.idle.text) or "IDLE")
     local idleVisual = self.GetIdleIndicatorVisual and self:GetIdleIndicatorVisual() or nil
 
-    if self.MainFrame.zone then
-        self.MainFrame.zone:SetText(zoneText)
-    end
-
-    if self.MainFrame.zoneSeparator then
-        if hasSubzone then
-            self.MainFrame.zoneSeparator:SetText((((elements.zoneSeparator or {}).text) or "-"))
-            self.MainFrame.zoneSeparator:Show()
-        else
-            self.MainFrame.zoneSeparator:Hide()
+    local headerKey = table.concat({ tostring(zoneText), tostring(subzoneText), totalTimeValueText, sessionTimeValueText }, "|")
+    if not (light and self.__fwrHeaderKey == headerKey) then
+        self.__fwrHeaderKey = headerKey
+        if self.MainFrame.zone then
+            self.MainFrame.zone:SetText(zoneText)
         end
-    end
 
-    if self.MainFrame.subzone then
-        if hasSubzone then
-            self.MainFrame.subzone:SetText(subzoneText)
-            self.MainFrame.subzone:Show()
-        else
-            self.MainFrame.subzone:SetText("")
-            self.MainFrame.subzone:Hide()
+        if self.MainFrame.zoneSeparator then
+            if hasSubzone then
+                self.MainFrame.zoneSeparator:SetText((((elements.zoneSeparator or {}).text) or "-"))
+                self.MainFrame.zoneSeparator:Show()
+            else
+                self.MainFrame.zoneSeparator:Hide()
+            end
         end
-    end
 
-    if self.MainFrame.titleAccent then
-        self.MainFrame.titleAccent:SetText(((elements.titleAccent or {}).text) or "Reforge")
-    end
-
-    if self.MainFrame.titleVersion then
-        local versionText = "v" .. tostring(self.VERSION or "")
-        if self.RELEASE_STAGE then
-            versionText = versionText .. " |cffff9a1f" .. self.RELEASE_STAGE .. "|r"
+        if self.MainFrame.subzone then
+            if hasSubzone then
+                self.MainFrame.subzone:SetText(subzoneText)
+                self.MainFrame.subzone:Show()
+            else
+                self.MainFrame.subzone:SetText("")
+                self.MainFrame.subzone:Hide()
+            end
         end
-        self.MainFrame.titleVersion:SetText(versionText)
-    end
 
-    if self.MainFrame.totalTimeLabel then
-        self.MainFrame.totalTimeLabel:SetText((elements.totalTimeLabel and elements.totalTimeLabel.text) or "Total:")
-    end
+        if self.MainFrame.titleAccent then
+            self.MainFrame.titleAccent:SetText(((elements.titleAccent or {}).text) or "Reforge")
+        end
 
-    if self.MainFrame.totalTimeValue then
-        self.MainFrame.totalTimeValue:SetText(totalTimeValueText)
-    end
+        if self.MainFrame.titleVersion then
+            local versionText = "v" .. tostring(self.VERSION or "")
+            if self.RELEASE_STAGE then
+                versionText = versionText .. " |cffff9a1f" .. self.RELEASE_STAGE .. "|r"
+            end
+            self.MainFrame.titleVersion:SetText(versionText)
+        end
 
-    if self.MainFrame.runtimeLabel then
-        self.MainFrame.runtimeLabel:SetText((elements.runtimeLabel and elements.runtimeLabel.text) or "Session:")
-    end
+        if self.MainFrame.totalTimeLabel then
+            self.MainFrame.totalTimeLabel:SetText((elements.totalTimeLabel and elements.totalTimeLabel.text) or "Total:")
+        end
 
-    if self.MainFrame.runtimeValue then
-        self.MainFrame.runtimeValue:SetText(sessionTimeValueText)
-    end
+        if self.MainFrame.totalTimeValue then
+            self.MainFrame.totalTimeValue:SetText(totalTimeValueText)
+        end
 
-    layoutMainFrameHeader(self.MainFrame)
+        if self.MainFrame.runtimeLabel then
+            self.MainFrame.runtimeLabel:SetText((elements.runtimeLabel and elements.runtimeLabel.text) or "Session:")
+        end
+
+        if self.MainFrame.runtimeValue then
+            self.MainFrame.runtimeValue:SetText(sessionTimeValueText)
+        end
+
+        layoutMainFrameHeader(self.MainFrame)
+    end
 
     if self.MainFrame.totalGoldValue then
         self.MainFrame.totalGoldValue:Hide()
@@ -882,21 +890,23 @@ function FWR:RefreshMainWindowText()
         self.MainFrame.estimatedGoldPerHourValue:Hide()
     end
 
-    if self.GetLiveSessionGoldBreakdown and self.MainFrame.totalGoldGold then
-        local gold, silver, copper = self:GetLiveSessionGoldBreakdown()
-        self.MainFrame.totalGoldGold:SetText(tostring(gold) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t")
-        self.MainFrame.totalGoldSilver:SetText(string.format("%02d", tonumber(silver) or 0) .. "|TInterface\\MoneyFrame\\UI-SilverIcon:12:12:2:0|t")
-        self.MainFrame.totalGoldCopper:SetText(string.format("%02d", tonumber(copper) or 0) .. "|TInterface\\MoneyFrame\\UI-CopperIcon:12:12:2:0|t")
-    end
+    if self.GetGoldContextSummary and self.MainFrame.totalGoldGold and self.MainFrame.estimatedGoldPerHourGold then
+        local summary = self:GetGoldContextSummary(light, sessionSeconds)
+        local gold, silver, copper = self:GetMoneyBreakdownFromCopper(summary.sessionCopper)
+        local perHourGold, perHourSilver, perHourCopper = self:GetMoneyBreakdownFromCopper(summary.estimatedCopperPerHour)
+        local goldKey = table.concat({ gold, silver, copper, perHourGold, perHourSilver, perHourCopper }, "|")
 
-    if self.GetLiveEstimatedGoldPerHourBreakdown and self.MainFrame.estimatedGoldPerHourGold then
-        local gold, silver, copper = self:GetLiveEstimatedGoldPerHourBreakdown()
-        self.MainFrame.estimatedGoldPerHourGold:SetText(tostring(gold) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t")
-        self.MainFrame.estimatedGoldPerHourSilver:SetText(string.format("%02d", tonumber(silver) or 0) .. "|TInterface\\MoneyFrame\\UI-SilverIcon:12:12:2:0|t")
-        self.MainFrame.estimatedGoldPerHourCopper:SetText(string.format("%02d", tonumber(copper) or 0) .. "|TInterface\\MoneyFrame\\UI-CopperIcon:12:12:2:0|t")
+        if self.__fwrGoldKey ~= goldKey then
+            self.__fwrGoldKey = goldKey
+            self.MainFrame.totalGoldGold:SetText(tostring(gold) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t")
+            self.MainFrame.totalGoldSilver:SetText(string.format("%02d", tonumber(silver) or 0) .. "|TInterface\\MoneyFrame\\UI-SilverIcon:12:12:2:0|t")
+            self.MainFrame.totalGoldCopper:SetText(string.format("%02d", tonumber(copper) or 0) .. "|TInterface\\MoneyFrame\\UI-CopperIcon:12:12:2:0|t")
+            self.MainFrame.estimatedGoldPerHourGold:SetText(tostring(perHourGold) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t")
+            self.MainFrame.estimatedGoldPerHourSilver:SetText(string.format("%02d", tonumber(perHourSilver) or 0) .. "|TInterface\\MoneyFrame\\UI-SilverIcon:12:12:2:0|t")
+            self.MainFrame.estimatedGoldPerHourCopper:SetText(string.format("%02d", tonumber(perHourCopper) or 0) .. "|TInterface\\MoneyFrame\\UI-CopperIcon:12:12:2:0|t")
+            applyMainFrameMoneyLayout(self.MainFrame)
+        end
     end
-
-    applyMainFrameMoneyLayout(self.MainFrame)
 
     -- the Reset button shows the reset mode of the Engine page; only the manual mode can be pressed
     if self.MainFrame.resetButton and self.GetSessionResetButtonState then
@@ -943,9 +953,58 @@ function FWR:RefreshMainWindowText()
         ensureIdleBlinker(self)
     end
 
-    if self.MainFrame.renderHost and self.RefreshDisplayScrollMetrics then
-        self:RefreshDisplayScrollMetrics(self.MainFrame.renderHost, true)
+    if self.MainFrame.renderHost then
+        if light then
+            if self.RefreshDisplayLiveRows then
+                self:RefreshDisplayLiveRows(self.MainFrame.renderHost)
+            end
+        elseif self.RefreshDisplayScrollMetrics then
+            self:RefreshDisplayScrollMetrics(self.MainFrame.renderHost, true)
+        end
     end
+end
+
+-- Full refresh of the window. Many things ask for it at once (every loot, every gold message, the
+-- late item info), so calls closer together than FULL_REFRESH_MIN_SECONDS become one. A hidden
+-- window is not drawn at all: it redraws itself when it is shown again.
+local FULL_REFRESH_MIN_SECONDS = 0.25
+
+function FWR:RefreshMainWindowText()
+    local frame = self.MainFrame
+    if not frame then
+        return
+    end
+    if frame.IsVisible and not frame:IsVisible() then
+        return
+    end
+
+    local clock = GetTime()
+    local wait = FULL_REFRESH_MIN_SECONDS - (clock - (self.__fwrFullRefreshAt or -100))
+    if wait > 0.001 then
+        if not self.__fwrFullRefreshQueued then
+            self.__fwrFullRefreshQueued = true
+            C_Timer.After(wait, function()
+                FWR.__fwrFullRefreshQueued = false
+                FWR:RefreshMainWindowText()
+            end)
+        end
+        return
+    end
+
+    self.__fwrFullRefreshAt = clock
+    refreshMainWindow(self, false)
+end
+
+-- Called twice a second by the idle system: clocks and per-hour figures only.
+function FWR:RefreshMainWindowClock()
+    local frame = self.MainFrame
+    if not frame or (frame.IsVisible and not frame:IsVisible()) then
+        return
+    end
+    if not self.__fwrFullRefreshAt then
+        return self:RefreshMainWindowText()
+    end
+    refreshMainWindow(self, true)
 end
 
 function FWR:InitializeMainFrameUI()
@@ -993,7 +1052,16 @@ function FWR:ApplyMainFrameBackdropTransparency()
         end
     end
 
-    applyBlockAlpha(frameBlocks.header, blocks.header, { 0.11, 0.11, 0.12 }, 0.90)
+    -- the title area (name, zone, times, scanner, buttons) is dark and does not follow the transparency,
+    -- so its text stays readable however see-through the rest of the window is
+    local titleArea = frameBlocks.header
+    if titleArea then
+        if titleArea.SetBackdropColor then
+            titleArea:SetBackdropColor(0.04, 0.04, 0.05, 0.96)
+        elseif titleArea.bgTexture then
+            titleArea.bgTexture:SetColorTexture(0.04, 0.04, 0.05, 0.96)
+        end
+    end
     applyBlockAlpha(frameBlocks.content, blocks.content, { 0.02, 0.02, 0.02 }, 1.0)
     applyBlockAlpha(frameBlocks.footer, blocks.footer, { 0.11, 0.11, 0.12 }, 0.90)
 end
@@ -1053,6 +1121,7 @@ function FWR:CreateMainFrame()
         frame:SetScript("OnDragStop", function(selfFrame)
             selfFrame:StopMovingOrSizing()
             saveMainFramePosition(FWR, selfFrame)
+            FWR:NoteMainWindowMoved()
         end)
     end
 
@@ -1074,6 +1143,7 @@ function FWR:CreateMainFrame()
         blocks.header:SetScript("OnDragStop", function()
             frame:StopMovingOrSizing()
             saveMainFramePosition(FWR, frame)
+            FWR:NoteMainWindowMoved()
         end)
     end
 
@@ -1082,6 +1152,7 @@ function FWR:CreateMainFrame()
     frame.title = createConfiguredFontString(blocks[elements.title.parentBlock], elements.title)
     frame.titleAccent = createConfiguredFontString(blocks[elements.titleAccent.parentBlock], elements.titleAccent)
     frame.titleVersion = createConfiguredFontString(blocks[elements.titleVersion.parentBlock], elements.titleVersion)
+    self:CreateMainWindowControls(frame, blocks.header, blocks.footer)
     frame.zone = createConfiguredFontString(blocks[elements.zone.parentBlock], elements.zone)
     frame.zoneSeparator = createConfiguredFontString(blocks[elements.zoneSeparator.parentBlock], elements.zoneSeparator)
     frame.subzone = createConfiguredFontString(blocks[elements.subzone.parentBlock], elements.subzone)

@@ -433,7 +433,7 @@ function FWR:ApplyIdleElapsed(now)
     state.lastUpdateAt = now
 end
 
--- Runs every frame; the window text only needs a refresh a couple of times per second.
+-- Runs a few times a second; the window clock only needs a refresh twice a second.
 local WINDOW_REFRESH_SECONDS = 0.5
 
 function FWR:UpdateIdleSystem(now)
@@ -442,8 +442,8 @@ function FWR:UpdateIdleSystem(now)
     local clock = GetTime()
     if clock - (self.__fwrWindowRefreshedAt or 0) >= WINDOW_REFRESH_SECONDS then
         self.__fwrWindowRefreshedAt = clock
-        if self.RefreshMainWindowText then
-            self:RefreshMainWindowText()
+        if self.RefreshMainWindowClock then
+            self:RefreshMainWindowClock()
         end
     end
 end
@@ -469,13 +469,15 @@ function FWR:GetLiveSubzoneText()
     return state.current.subzone or ""
 end
 
-function FWR:GetLiveTotalTimeValueText()
-    local totalSeconds = self:SumViewScopeSeconds()
-    return formatClock(totalSeconds)
+function FWR:GetLiveTotalTimeValueText(totalSeconds)
+    return formatClock(totalSeconds or self:SumViewScopeSeconds())
 end
 
-function FWR:GetLiveSessionTimeValueText()
-    local _, sessionSeconds = self:SumViewScopeSeconds()
+function FWR:GetLiveSessionTimeValueText(sessionSeconds)
+    if not sessionSeconds then
+        local _, seconds = self:SumViewScopeSeconds()
+        sessionSeconds = seconds
+    end
     return formatClock(sessionSeconds)
 end
 
@@ -531,7 +533,7 @@ function FWR:GetIdleIndicatorVisual()
         return {
             color = { 1.0, 0.25, 0.25 },
             alpha = 1.0,
-            font = "GameFontNormal",
+            font = "GameFontNormalSmall",
         }
     end
 
@@ -540,7 +542,7 @@ function FWR:GetIdleIndicatorVisual()
     return {
         color = { 1.0, 0.15, 0.15 },
         alpha = 1.0,
-        font = "GameFontNormal",
+        font = "GameFontNormalSmall",
         blink = true,
     }
 end

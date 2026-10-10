@@ -1,8 +1,8 @@
 ## Interface: 120100
 ## Title: FarmWise
 ## Notes: Farm smarter, zone by zone
-## Version: 3.0.0 beta
-## Author: ChrGeo/GPT
+## Version: 4.1.42 beta
+## Author: ChrGeo/
 ## SavedVariables: FarmWiseDB, FarmWiseReforgedDB, FarmWiseReforgedSettingsDB
 
 Core/FWR_Defaults.lua
@@ -37,6 +37,7 @@ UI/FWR_PanelStyle.lua
 UI/FWR_MainFrameConfigurator.lua
 UI/FWR_MainFrame.lua
 UI/FWR_ControlPanelConfigurator.lua
+UI/FWR_MainWindowControls.lua
 UI/FWR_CombatVisibility.lua
 UI/FWR_ControlPanelWindow.lua
 UI/FWR_LauncherIcon.lua

@@ -172,7 +172,17 @@ frame:SetScript("OnEvent", function(_, event, ...)
     end
 end)
 
-frame:SetScript("OnUpdate", function(_, _)
+-- Runs every frame, but the work (cast timers, idle clock, reset schedule) needs a few checks a second.
+local FRAME_WORK_SECONDS = 0.2
+local frameWorkWaited = 0
+
+frame:SetScript("OnUpdate", function(_, elapsed)
+    frameWorkWaited = frameWorkWaited + (tonumber(elapsed) or 0)
+    if frameWorkWaited < FRAME_WORK_SECONDS then
+        return
+    end
+    frameWorkWaited = 0
+
     if FWR.RefreshHerbalismRouteState then
         FWR:RefreshHerbalismRouteState(GetTime and GetTime() or 0)
     end

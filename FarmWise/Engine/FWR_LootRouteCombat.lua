@@ -3,7 +3,7 @@ FarmWiseReforged = FWR
 
 function FWR:RouteCombatLoot(sourceStage, quantity)
     if self.RouteGenericLoot then
-        return self:RouteGenericLoot(sourceStage, quantity, "COMBAT")
+        return self:RouteGenericLoot(sourceStage, quantity)
     end
 
     return {

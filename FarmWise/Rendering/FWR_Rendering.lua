@@ -800,39 +800,6 @@ local function getEntryCharacterLabel(entry)
 end
 
 
-local function normalizeDisplayText(value)
-    if type(value) ~= "string" then
-        return nil
-    end
-
-    value = value:gsub("^%s+", ""):gsub("%s+$", "")
-    if value == "" then
-        return nil
-    end
-
-    return value
-end
-
-local function entryMatchesCharacter(self, entry, currentCharacterKey)
-    if currentCharacterKey == "" then
-        return true
-    end
-
-    if type(entry) ~= "table" then
-        return false
-    end
-
-    local entryCharacterKey = entry.characterKey
-    if (type(entryCharacterKey) ~= "string" or entryCharacterKey == "") and self.BuildCharacterKey then
-        entryCharacterKey = self:BuildCharacterKey(entry.characterName, entry.realmName)
-    end
-
-    if type(entryCharacterKey) ~= "string" or entryCharacterKey == "" then
-        return false
-    end
-
-    return entryCharacterKey == currentCharacterKey
-end
 local SPECIALIZED_ITEM_TYPES = {
     ["dust"] = true,
     ["essence"] = true,
@@ -1141,6 +1108,16 @@ local function getRarityColor(quality)
     return 1, 1, 1
 end
 
+-- Setting a text makes the game lay it out again, so a cell that already shows it is left alone.
+local function setTextIfChanged(fontString, text)
+    if fontString.__fwrText ~= text then
+        fontString.__fwrText = text
+        fontString:SetText(text)
+    end
+end
+
+-- Cuts a text to fit a width, with "..." at the end. Measuring is expensive (the game lays the text
+-- out for every try), so the answer is remembered: the same text in the same width costs nothing.
 local function truncateTextToWidth(fontString, textValue, maxWidth)
     if not fontString then
         return textValue or ""
@@ -1151,6 +1128,16 @@ local function truncateTextToWidth(fontString, textValue, maxWidth)
         return ""
     end
 
+    if fontString.__fwrCutText == text and fontString.__fwrCutWidth == maxWidth then
+        return fontString.__fwrCutResult
+    end
+
+    -- measuring writes other texts into the cell, so what it shows is no longer known
+    fontString.__fwrText = nil
+    fontString.__fwrCutText = text
+    fontString.__fwrCutWidth = maxWidth
+    fontString.__fwrCutResult = nil
+
     fontString:SetWordWrap(false)
     if fontString.SetMaxLines then
         fontString:SetMaxLines(1)
@@ -1158,12 +1145,14 @@ local function truncateTextToWidth(fontString, textValue, maxWidth)
 
     fontString:SetText(text)
     if fontString:GetStringWidth() <= maxWidth then
+        fontString.__fwrCutResult = text
         return text
     end
 
     local ellipsis = "..."
     fontString:SetText(ellipsis)
     if fontString:GetStringWidth() >= maxWidth then
+        fontString.__fwrCutResult = ellipsis
         return ellipsis
     end
 
@@ -1179,11 +1168,9 @@ local function truncateTextToWidth(fontString, textValue, maxWidth)
         end
     end
 
-    if low <= 0 then
-        return ellipsis
-    end
-
-    return string.sub(text, 1, low) .. ellipsis
+    local result = low <= 0 and ellipsis or (string.sub(text, 1, low) .. ellipsis)
+    fontString.__fwrCutResult = result
+    return result
 end
 
 local function formatSecondsAsClock(totalSeconds)
@@ -1295,6 +1282,8 @@ local TEXT_COLUMN_LABELS = {
     character = function(entry) return getEntryCharacterLabel(entry) end,
 }
 
+local textWidthCache, textWidthCacheSize = {}, 0
+
 local function getTextColumnMeta(frame, entries, config)
     local measure = ensureMeasureFontString(frame)
     local needed = {}
@@ -1302,9 +1291,20 @@ local function getTextColumnMeta(frame, entries, config)
         return needed
     end
 
+    -- the same text always has the same width in the same font: ask the game once
     local function measureText(text)
-        measure:SetText(text or "")
-        return measure:GetStringWidth() or 0
+        text = text or ""
+        local width = textWidthCache[text]
+        if width == nil then
+            measure:SetText(text)
+            width = measure:GetStringWidth() or 0
+            if textWidthCacheSize >= 3000 then
+                textWidthCache, textWidthCacheSize = {}, 0
+            end
+            textWidthCache[text] = width
+            textWidthCacheSize = textWidthCacheSize + 1
+        end
+        return width
     end
 
     local function isVisible(key)
@@ -1784,18 +1784,18 @@ local function ensureRow(frame, index)
     return row
 end
 
-function FWR:UpdateDisplayColumnLayout(frame)
+function FWR:UpdateDisplayColumnLayout(frame, shownEntries)
     if not frame then
         return
     end
 
     local config = getRenderConfigForFrame(frame)
-    local entries = getDisplayedEntries(FWR)
+    local entries = shownEntries or getDisplayedEntries(FWR)
     local elapsedSeconds = getDisplayElapsedSeconds(FWR)
     local numericMeta = getNumericColumnMeta(frame, entries, elapsedSeconds)
     local textMeta = getTextColumnMeta(frame, entries, config)
 
-    local function resolveColumnWidth(key, columnConfig, fallbackWidth)
+    local function measureColumnWidth(key, columnConfig, fallbackWidth)
         local visible = true
         if type(columnConfig) == "table" and columnConfig.visible ~= nil then
             visible = not not columnConfig.visible
@@ -1860,6 +1860,34 @@ function FWR:UpdateDisplayColumnLayout(frame)
         return width
     end
 
+    -- With "Keep the column widths" a column keeps the widest width it ever needed, saved with the
+    -- settings, so the window does not jump left and right (or change at every login). Without it,
+    -- columns simply fit what they show.
+    local function widthMemory()
+        local settings = FWR.Settings
+        if not settings or not settings.display or (settings.ui and settings.ui.keepColumnWidths == false) then
+            return nil
+        end
+        if type(settings.display.columnWidthMemory) ~= "table" then
+            settings.display.columnWidthMemory = {}
+        end
+        return settings.display.columnWidthMemory
+    end
+
+    local function resolveColumnWidth(key, columnConfig, fallbackWidth)
+        local width = measureColumnWidth(key, columnConfig, fallbackWidth)
+        local memory = widthMemory()
+        if width <= 0 or not memory then
+            return width
+        end
+        local remembered = tonumber(memory[key]) or 0
+        if width > remembered then
+            memory[key] = width
+            return width
+        end
+        return remembered
+    end
+
     local qualityWidth = resolveColumnWidth("quality", config.quality, 18)
     local quantityWidth = resolveColumnWidth("quantity", config.quantity, 56)
     local totalWidth = resolveColumnWidth("total", config.total, 56)
@@ -1919,6 +1947,17 @@ function FWR:UpdateDisplayColumnLayout(frame)
         numericMeta = numericMeta,
     }
     frame.columnPositions = resolvedLayout
+
+    -- headers, dividers and rows only need their places again when a width or position changed
+    local keyParts = { tostring(minimumContentWidth), tostring(gap), tostring(nameWidth) }
+    for _, key in ipairs(getColumnOrderKeysForFrame(frame)) do
+        keyParts[#keyParts + 1] = key .. "=" .. tostring(resolvedLayout[key]) .. ":" .. tostring(frame.columnWidths[COLUMN_WIDTH_KEY_BY_KEY[key]])
+    end
+    local layoutKey = table.concat(keyParts, ",")
+    if frame.__fwrLayoutKey == layoutKey then
+        return
+    end
+    frame.__fwrLayoutKey = layoutKey
 
     local x1 = resolvedLayout.item or 0
     local xQuality = resolvedLayout.quality or (x1 + nameWidth)
@@ -2133,7 +2172,7 @@ local function updateRowLiveMetrics(frame, row, entry, elapsedSeconds)
         return
     end
 
-    row.itemPerHour:SetText(formatItemPerHour(entry.totalCount, elapsedSeconds))
+    setTextIfChanged(row.itemPerHour, formatItemPerHour(entry.totalCount, elapsedSeconds))
 end
 
 local function updateSecondaryTimerText(frame, elapsedSeconds, isRunning)
@@ -2151,22 +2190,22 @@ local function clearHiddenRow(row)
     end
 
     if row.itemName then
-        row.itemName:SetText("")
+        setTextIfChanged(row.itemName, "")
     end
     if row.quantity then
-        row.quantity:SetText("")
+        setTextIfChanged(row.quantity, "")
     end
     if row.total then
-        row.total:SetText("")
+        setTextIfChanged(row.total, "")
     end
     if row.itemPerHour then
-        row.itemPerHour:SetText("")
+        setTextIfChanged(row.itemPerHour, "")
     end
     if row.itemType then
-        row.itemType:SetText("")
+        setTextIfChanged(row.itemType, "")
     end
     if row.classification then
-        row.classification:SetText("")
+        setTextIfChanged(row.classification, "")
         row.classification:SetTextColor(0.85, 0.85, 0.85, 1)
     end
     if row.classificationHitbox then
@@ -2174,40 +2213,40 @@ local function clearHiddenRow(row)
         row.classificationHitbox:Hide()
     end
     if row.activity then
-        row.activity:SetText("")
+        setTextIfChanged(row.activity, "")
     end
     if row.activityHitbox then
         row.activityHitbox.tooltipText = nil
         row.activityHitbox:Hide()
     end
     if row.expansion then
-        row.expansion:SetText("")
+        setTextIfChanged(row.expansion, "")
     end
     if row.expansionHitbox then
         row.expansionHitbox.tooltipText = nil
         row.expansionHitbox:Hide()
     end
     if row.zone then
-        row.zone:SetText("")
+        setTextIfChanged(row.zone, "")
     end
     if row.subZone then
-        row.subZone:SetText("")
+        setTextIfChanged(row.subZone, "")
     end
     if row.character then
-        row.character:SetText("")
+        setTextIfChanged(row.character, "")
     end
     if row.price then
-        row.price:SetText("")
+        setTextIfChanged(row.price, "")
     end
     if row.value then
-        row.value:SetText("")
+        setTextIfChanged(row.value, "")
     end
     for _, hitbox in ipairs({ row.priceHitbox, row.valueHitbox }) do
         hitbox.tooltipText = nil
         hitbox:Hide()
     end
     if row.qualityText then
-        row.qualityText:SetText("")
+        setTextIfChanged(row.qualityText, "")
         row.qualityText:Hide()
     end
     if row.qualityIcon then
@@ -2218,14 +2257,18 @@ local function clearHiddenRow(row)
     end
 end
 
-function FWR:RenderDisplayRows(frame)
+-- shownEntries / layoutDone let a caller that already worked them out share them (one refresh does
+-- the item aggregation and the column layout once, not three times).
+function FWR:RenderDisplayRows(frame, shownEntries, layoutDone)
     if not frame or not frame.scrollChild then
         return
     end
 
-    self:UpdateDisplayColumnLayout(frame)
-
-    local entries = getDisplayedEntries(FWR)
+    local entries = shownEntries or getDisplayedEntries(FWR)
+    if not layoutDone then
+        self:UpdateDisplayColumnLayout(frame, entries)
+    end
+    frame.lastRenderedEntries = entries
     local contentHeight = getContentHeight(frame)
     local contentWidth = (frame.columnWidths and frame.columnWidths.content) or math.max(420, (frame.scrollFrame:GetWidth() or 520) - 6)
 
@@ -2241,12 +2284,16 @@ function FWR:RenderDisplayRows(frame)
     for index, entry in ipairs(entries) do
         local row = ensureRow(frame, index)
         row:Show()
-        row:ClearAllPoints()
         local rowHeight = getRowHeight(frame)
         local topPadding = getVerticalPadding(frame)
         local rowTop = topPadding or 0
-        row:SetPoint("TOPLEFT", frame.scrollChild, "TOPLEFT", 0, -(rowTop + ((index - 1) * rowHeight)))
-        row:SetPoint("TOPRIGHT", frame.scrollChild, "TOPLEFT", contentWidth, -(rowTop + ((index - 1) * rowHeight)))
+        local placeKey = rowTop .. ":" .. rowHeight .. ":" .. contentWidth .. ":" .. index
+        if row.__fwrPlaceKey ~= placeKey then
+            row.__fwrPlaceKey = placeKey
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", frame.scrollChild, "TOPLEFT", 0, -(rowTop + ((index - 1) * rowHeight)))
+            row:SetPoint("TOPRIGHT", frame.scrollChild, "TOPLEFT", contentWidth, -(rowTop + ((index - 1) * rowHeight)))
+        end
 
         local itemLabel = entry.itemName or entry.itemLink or (entry.itemID and ("item:" .. tostring(entry.itemID))) or "unknown item"
         local r, g, b = getRarityColor(entry.itemRarity)
@@ -2254,21 +2301,21 @@ function FWR:RenderDisplayRows(frame)
         local maxNameWidth = math.max(16, itemTextWidth)
         local displayLabel = truncateTextToWidth(row.itemName, itemLabel, maxNameWidth)
 
-        row.itemName:SetText(displayLabel)
+        setTextIfChanged(row.itemName, displayLabel)
         row.itemName:SetTextColor(r, g, b, 1)
-        row.quantity:SetText(tostring(tonumber(entry.quantityCount) or 0))
-        row.total:SetText(tostring(tonumber(entry.totalCount) or 0))
+        setTextIfChanged(row.quantity, tostring(tonumber(entry.quantityCount) or 0))
+        setTextIfChanged(row.total, tostring(tonumber(entry.totalCount) or 0))
         updateRowLiveMetrics(frame, row, entry, getDisplayElapsedSeconds(FWR))
 
         if row.itemType then
             local itemTypeLabel = truncateTextToWidth(row.itemType, getEntryItemTypeLabel(entry), (frame.columnWidths and frame.columnWidths.itemType) or 96)
-            row.itemType:SetText(itemTypeLabel)
+            setTextIfChanged(row.itemType, itemTypeLabel)
         end
 
         if row.classification then
             local rawClassificationLabel = getEntryClassificationLabel(entry)
             local classificationLabel = truncateTextToWidth(row.classification, rawClassificationLabel, (frame.columnWidths and frame.columnWidths.classification) or 96)
-            row.classification:SetText(classificationLabel)
+            setTextIfChanged(row.classification, classificationLabel)
             if string.lower(rawClassificationLabel or "") == "multiple" then
                 local red, green, blue, alpha
                 if FWR.GetAccentGoldColor then
@@ -2293,7 +2340,7 @@ function FWR:RenderDisplayRows(frame)
         if row.activity then
             local rawActivityLabel = getEntryActivityLabel(entry)
             local activityLabel = truncateTextToWidth(row.activity, rawActivityLabel, (frame.columnWidths and frame.columnWidths.activity) or 84)
-            row.activity:SetText(activityLabel)
+            setTextIfChanged(row.activity, activityLabel)
             if string.lower(rawActivityLabel or "") == "multiple" then
                 local red, green, blue, alpha
                 if FWR.GetAccentGoldColor then
@@ -2317,7 +2364,7 @@ function FWR:RenderDisplayRows(frame)
 
         if row.expansion then
             local expansionLabel = truncateTextToWidth(row.expansion, getEntryExpansionLabel(entry), (frame.columnWidths and frame.columnWidths.expansion) or 96)
-            row.expansion:SetText(expansionLabel)
+            setTextIfChanged(row.expansion, expansionLabel)
         end
         if row.expansionHitbox then
             local expansionFullName = getEntryExpansionFullName(entry)
@@ -2326,17 +2373,17 @@ function FWR:RenderDisplayRows(frame)
 
         if row.zone then
             local zoneLabel = truncateTextToWidth(row.zone, getEntryZoneLabel(entry), (frame.columnWidths and frame.columnWidths.zone) or 110)
-            row.zone:SetText(zoneLabel)
+            setTextIfChanged(row.zone, zoneLabel)
         end
 
         if row.subZone then
             local subZoneLabel = truncateTextToWidth(row.subZone, getEntrySubZoneLabel(entry), (frame.columnWidths and frame.columnWidths.subZone) or 110)
-            row.subZone:SetText(subZoneLabel)
+            setTextIfChanged(row.subZone, subZoneLabel)
         end
 
         if row.character then
             local characterLabel = truncateTextToWidth(row.character, getEntryCharacterLabel(entry), (frame.columnWidths and frame.columnWidths.character) or 128)
-            row.character:SetText(characterLabel)
+            setTextIfChanged(row.character, characterLabel)
             local classRed, classGreen, classBlue, classAlpha = getClassColorValues(entry.characterClassFile)
             row.character:SetTextColor(classRed, classGreen, classBlue, classAlpha or 1)
         end
@@ -2344,8 +2391,8 @@ function FWR:RenderDisplayRows(frame)
         if row.price and row.value then
             -- the Auction House price of one item, and its worth for what was collected this session
             local priceText, valueText = getEntryPriceTexts(entry)
-            row.price:SetText(priceText)
-            row.value:SetText(valueText)
+            setTextIfChanged(row.price, priceText)
+            setTextIfChanged(row.value, valueText)
 
             -- each cell shows what the other one is: the price cell the total value, the value cell the price of one item
             local hasPrice = priceText ~= "-"
@@ -2372,8 +2419,9 @@ function FWR:RefreshDisplayScrollMetrics(frame, keepScroll)
         return
     end
 
-    self:UpdateDisplayColumnLayout(frame)
-    self:RenderDisplayRows(frame)
+    local entries = getDisplayedEntries(self)
+    self:UpdateDisplayColumnLayout(frame, entries)
+    self:RenderDisplayRows(frame, entries, true)
 
     local childHeight = frame.scrollChild:GetHeight() or 0
     local visibleHeight = math.max(100, frame.scrollFrame:GetHeight() or 100)
@@ -2385,6 +2433,38 @@ function FWR:RefreshDisplayScrollMetrics(frame, keepScroll)
         nextScroll = maxScroll
     end
     frame.scrollFrame:SetVerticalScroll(nextScroll)
+end
+
+-- The only thing in the rows that changes with time alone is item / hour: update just that, from the
+-- entries of the last full draw.
+function FWR:RefreshDisplayLiveRows(frame)
+    local entries = frame and frame.lastRenderedEntries
+    if type(entries) ~= "table" or not frame.rows then
+        return
+    end
+
+    local elapsedSeconds = getDisplayElapsedSeconds(FWR)
+    for index, row in ipairs(frame.rows) do
+        local entry = entries[index]
+        if entry and row:IsShown() then
+            updateRowLiveMetrics(frame, row, entry, elapsedSeconds)
+        end
+    end
+end
+
+-- Columns forget their widest width and fit their content again.
+function FWR:ResetColumnWidthMemory()
+    if self.Settings and self.Settings.display then
+        self.Settings.display.columnWidthMemory = {}
+    end
+
+    local host = self.MainFrame and self.MainFrame.renderHost
+    if host then
+        host.__fwrLayoutKey = nil
+        if self.RefreshDisplayScrollMetrics then
+            self:RefreshDisplayScrollMetrics(host, true)
+        end
+    end
 end
 
 function FWR:RefreshDisplayText()
@@ -2643,10 +2723,6 @@ function FWR:GetResolvedMainFrameShellWidth(contentWidth)
     return content + (MAIN_FRAME_SIDE_INSET * 2) + gapBefore + scrollBarWidth + gapAfter
 end
 
-function FWR:GetDisplayRenderConfig()
-    return FULL_COLUMN_CONFIG
-end
-
 local REORDERABLE_MAIN_COLUMNS = { "quantity", "total", "itemPerHour", "activity", "itemType", "classification", "expansion", "zone", "subZone", "character", "price", "value" }
 local OPTIONAL_MAIN_COLUMNS = { "quantity", "total", "itemPerHour", "activity", "itemType", "classification", "expansion", "zone", "subZone", "character", "price", "value" }
 local DEFAULT_MAIN_COLUMN_ORDER = {
@@ -2852,6 +2928,7 @@ function FWR:ApplyDisplaySettings()
         end
 
         if self.UpdateDisplayColumnLayout then
+            host.__fwrLayoutKey = nil   -- a setting changed: lay everything out again
             self:UpdateDisplayColumnLayout(host)
         end
         if self.RefreshDisplayScrollMetrics then
@@ -2902,19 +2979,3 @@ function FWR:QueueMainWindowRefreshes()
     end)
 end
 
-function FWR:RefreshDisplayFilterButtonStates()
-    local secondaryHost = getResolvedSecondaryDisplayHost(self)
-    if not secondaryHost then
-        return
-    end
-
-    if secondaryHost.specializedToggleButton then
-        local isVisible = self.IsSpecializedClassificationVisible and self:IsSpecializedClassificationVisible()
-        secondaryHost.specializedToggleButton:SetText(isVisible and "Show P/C: ON" or "Show P/C: OFF")
-    end
-
-    if secondaryHost.oldExpansionToggleButton then
-        local isVisible = self.IsOldExpansionVisible and self:IsOldExpansionVisible()
-        secondaryHost.oldExpansionToggleButton:SetText(isVisible and "Show Old: ON" or "Show Old: OFF")
-    end
-end

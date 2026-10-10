@@ -88,7 +88,11 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             },
             options = {
                 { key = "showMainWindowOnGameLoad", label = "Show main window when the game loads", defaultValue = true },
-                { key = "hideMainWindowInCombat", label = "Hide main window during combat", defaultValue = false },
+                { key = "hideMainWindowInCombat", label = "Minimize main window during combat", defaultValue = false },
+                { key = "autoLockMainWindow", label = "Auto-lock the main window after a minute", defaultValue = true,
+                  tooltip = "An unlocked window locks itself when it has not been moved for a minute, so it cannot be dragged by accident." },
+                { key = "keepColumnWidths", label = "Keep the column widths (the window does not shrink)", defaultValue = true,
+                  tooltip = "Each column keeps the widest size it has needed, also after a reload or after closing the game, so the window never jumps around. Turn it off and the columns always fit what they show. Use the button below to start again from the smallest widths." },
                 { key = "hideControlPanelsInCombat", label = "Hide control panels during combat", defaultValue = true },
                 { key = "restoreControlPanelsAfterCombat", label = "Restore control panels after combat", defaultValue = true },
                 { key = "showMainFrameTooltips", label = "Show Main Frame Tooltips", defaultValue = true },

@@ -26,6 +26,9 @@ local function formatPrice(copper)
     return string.format("%d%s", rest, COPPER_ICON)
 end
 
+-- an item's class never changes, so it is asked of the game once
+local materialCache = {}
+
 -- Lowest Auction House price of one item from the last scan, or nil. Without the whole-Auction-House
 -- option (or when materialsOnly is true) only trade materials have a price, so an old full scan never
 -- leaves a stale price on another kind of item.
@@ -37,8 +40,16 @@ function FWR:GetAuctionPrice(itemID, materialsOnly)
 
 
     if materialsOnly or not (type(settings) == "table" and settings.fullScan == true) then
-        local tradegoods = (Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods) or 7
-        if select(6, GetItemInfoInstant(itemID)) ~= tradegoods then
+        local isMaterial = materialCache[itemID]
+        if isMaterial == nil then
+            local classID = select(6, GetItemInfoInstant(itemID))
+            if classID == nil then
+                return nil
+            end
+            isMaterial = classID == ((Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods) or 7)
+            materialCache[itemID] = isMaterial
+        end
+        if not isMaterial then
             return nil
         end
     end

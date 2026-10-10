@@ -38,26 +38,6 @@ local function syncDisplayBasketAliases(self, basket)
 end
 
 
-local function entryMatchesCharacter(self, entry, currentCharacterKey)
-    if currentCharacterKey == "" then
-        return true
-    end
-
-    if type(entry) ~= "table" then
-        return false
-    end
-
-    local entryCharacterKey = entry.characterKey
-    if (type(entryCharacterKey) ~= "string" or entryCharacterKey == "") and self.BuildCharacterKey then
-        entryCharacterKey = self:BuildCharacterKey(entry.characterName, entry.realmName)
-    end
-
-    if type(entryCharacterKey) ~= "string" or entryCharacterKey == "" then
-        return false
-    end
-
-    return entryCharacterKey == currentCharacterKey
-end
 function FWR:EnsureRenderStateForContext(contextKey)
     self:EnsureDatabases()
 

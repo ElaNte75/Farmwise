@@ -164,13 +164,23 @@ end
 --   money looted from mobs + vendor value of scrap + trade materials at their Auction House price
 --   (minus the Auction House cut). Gear and other drops are not counted: nobody knows what they will become.
 -- The estimate per hour is that amount divided by the session time.
-function FWR:GetGoldContextSummary()
-    local scope = self:GetViewScope()
-    local rawCopper, scrapCopper = self:SumViewScopeGold(scope)
-    local materialsCopper = self:SumViewScopeMaterialsValue(scope) * (1 - (self.AUCTION_HOUSE_CUT or 0.05))
-    local _, sessionSeconds = self:SumViewScopeSeconds(scope)
+-- Walking through every stored place is the expensive part, so with useCache the amount of the last
+-- full calculation is reused and only the time changes (the window clock does this twice a second).
+function FWR:GetGoldContextSummary(useCache, sessionSeconds)
+    local sessionCopper = useCache and self.__fwrSessionCopperCache or nil
+    if not sessionCopper then
+        local scope = self:GetViewScope()
+        local rawCopper, scrapCopper = self:SumViewScopeGold(scope)
+        local materialsCopper = self:SumViewScopeMaterialsValue(scope) * (1 - (self.AUCTION_HOUSE_CUT or 0.05))
+        sessionCopper = rawCopper + scrapCopper + materialsCopper
+        self.__fwrSessionCopperCache = sessionCopper
+    end
 
-    local sessionCopper = rawCopper + scrapCopper + materialsCopper
+    if not sessionSeconds then
+        local _, seconds = self:SumViewScopeSeconds()
+        sessionSeconds = seconds
+    end
+
     local estimatedCopperPerHour = 0
     if sessionSeconds > 0 then
         estimatedCopperPerHour = (sessionCopper * 3600) / sessionSeconds
@@ -189,16 +199,6 @@ function FWR:GetMoneyBreakdownFromCopper(copper)
     local silver = math.floor((copper % 10000) / 100)
     local copperOnly = copper % 100
     return gold, silver, copperOnly
-end
-
-function FWR:GetLiveSessionGoldBreakdown()
-    local summary = self:GetGoldContextSummary()
-    return self:GetMoneyBreakdownFromCopper(summary.sessionCopper)
-end
-
-function FWR:GetLiveEstimatedGoldPerHourBreakdown()
-    local summary = self:GetGoldContextSummary()
-    return self:GetMoneyBreakdownFromCopper(summary.estimatedCopperPerHour)
 end
 
 function FWR:HandleLootMoneyChatMessage(message)

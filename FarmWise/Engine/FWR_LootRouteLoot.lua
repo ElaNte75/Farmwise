@@ -855,7 +855,7 @@ function FWR:BuildIntegratedLootRouteResult(sourceStage)
     return result, false
 end
 
-function FWR:RouteGenericLoot(sourceStage, quantity, debugBucket)
+function FWR:RouteGenericLoot(sourceStage, quantity)
     local result, needsRetry = self:BuildIntegratedLootRouteResult(sourceStage)
     if needsRetry then
         return result, true

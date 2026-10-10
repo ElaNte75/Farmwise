@@ -749,16 +749,90 @@ local function createInterfacePage(parent, frame)
 
         check:SetChecked(getBooleanSetting(option.key, option.defaultValue))
         updateCheckboxVisual(check)
+        attachTooltip(check, option.label, option.tooltip)
         check:SetScript("OnClick", function(self)
             local checked = self:GetChecked() == true
             setBooleanSetting(option.key, checked)
             updateCheckboxVisual(self)
             refreshInterfaceDependencies(frame)
+            if option.key == "keepColumnWidths" and not checked and FWR.ResetColumnWidthMemory then
+                FWR:ResetColumnWidthMemory()
+            end
+            if FWR.RestartMainWindowAutoLock then
+                FWR:RestartMainWindowAutoLock()
+            end
+            if FWR.ApplySettingsVisibilityRules then
+                FWR:ApplySettingsVisibilityRules(true)
+            end
         end)
 
         page.InterfaceControls[option.key] = check
         previous = check
     end
+
+    -- start again from the smallest column widths
+    local resetWidths = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    resetWidths:SetSize(170, 24)
+    resetWidths:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 4, -14)
+    resetWidths:SetText("Reset column widths")
+    resetWidths:SetScript("OnClick", function()
+        if FWR.ResetColumnWidthMemory then
+            FWR:ResetColumnWidthMemory()
+        end
+    end)
+    attachTooltip(resetWidths, "Reset column widths", "Makes every column as narrow as its content again. They then grow only when something needs more room.")
+
+    -- where the minimized window's small button sits: one button that goes through the places
+    local CORNERS = {
+        { "BOTTOMLEFT", "Bottom left" },
+        { "TOPLEFT", "Top left" },
+        { "TOPRIGHT", "Top right" },
+        { "BOTTOMRIGHT", "Bottom right" },
+        { "CENTER", "Center" },
+    }
+    local cornerButton = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    cornerButton:SetSize(220, 24)
+    cornerButton:SetPoint("TOPLEFT", resetWidths, "BOTTOMLEFT", 0, -8)
+
+    local function currentCornerIndex()
+        local saved = ((FWR.Settings or {}).ui or {}).minimizeCorner
+        for index, entry in ipairs(CORNERS) do
+            if entry[1] == saved then
+                return index
+            end
+        end
+        return 1
+    end
+
+    local function refreshCornerButton()
+        cornerButton:SetText("Minimize to: " .. CORNERS[currentCornerIndex()][2])
+    end
+
+    -- both buttons get the width of the longest text either of them can show
+    local widest = 0
+    local function measureText(text)
+        cornerButton:SetText(text)
+        widest = math.max(widest, cornerButton:GetFontString():GetStringWidth() or 0)
+    end
+    measureText("Reset column widths")
+    for _, entry in ipairs(CORNERS) do
+        measureText("Minimize to: " .. entry[2])
+    end
+    local sameWidth = math.ceil(widest) + 28
+    resetWidths:SetWidth(sameWidth)
+    cornerButton:SetWidth(sameWidth)
+
+    cornerButton:SetScript("OnClick", function()
+        local nextIndex = currentCornerIndex() % #CORNERS + 1
+        setValueSetting({ "ui", "minimizeCorner" }, CORNERS[nextIndex][1])
+        refreshCornerButton()
+        if FWR.ApplyMainWindowPresentation then
+            FWR:ApplyMainWindowPresentation()
+        end
+    end)
+    attachTooltip(cornerButton, "Minimize to", "Where the small FarmWise button appears on the window when you minimize it. Click to go through: bottom left, top left, top right, bottom right, center.")
+    page:SetScript("OnShow", refreshCornerButton)
+    refreshCornerButton()
 
     frame.InterfaceControls = page.InterfaceControls
     refreshInterfaceDependencies(frame)

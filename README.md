@@ -27,6 +27,9 @@ Upgrading from an older FarmWise: your saved statistics are kept and read as the
   Auction House. Prices appear in item tooltips ("FarmWise AH") and in the optional Price / Value columns.
 - **Session reset** (Control Panel > Engine): Manual (the Reset button), Local (daily at a chosen time) or Auto
   (when you leave a zone or sub-zone for a chosen time). The Reset button shows which mode is active.
+- **Window controls:** a lock (with an optional auto-lock after a minute) and a minimize button that turns
+  the window into a small "FarmWise" button on the corner you choose; optionally it minimizes by itself in
+  combat. Columns keep the widest size they needed, so the window does not jump around.
 - **Control Panel** (`Options` button): window behaviour, display columns, tracking, session reset, rarity filter,
   Auction House scan, data erase.
 

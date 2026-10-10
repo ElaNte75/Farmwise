@@ -1,8 +1,8 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
--- Combat visibility: hides the main window and/or the FarmWise panels (control panel, Advisor)
--- during combat and brings them back afterwards, following the Interface settings.
+-- Combat visibility: minimizes the main window and/or hides the FarmWise panels (control panel,
+-- Advisor) during combat and brings them back afterwards, following the Interface settings.
 
 local panelsHiddenByCombat = {}
 
@@ -18,6 +18,10 @@ local function isPlayerInCombat()
     return false
 end
 
+function FWR:IsPlayerInCombat()
+    return isPlayerInCombat()
+end
+
 local function collectManagedPanels(self)
     local panels = {}
     if self.ControlPanel then
@@ -29,34 +33,10 @@ local function collectManagedPanels(self)
     return panels
 end
 
-local function applyMainFrameRule(self, ui, inCombat, forceRefresh)
-    if not self.MainFrame then
-        return
-    end
-
-    local shouldShowMainFrame = ui.mainWindowVisible ~= false
-
-    if inCombat and ui.hideMainWindowInCombat == true then
-        if self.__fwrMainFrameCombatSnapshot == nil then
-            self.__fwrMainFrameCombatSnapshot = self.MainFrame:IsShown() == true
-        end
-        if self.MainFrame:IsShown() then
-            self.MainFrame:Hide()
-        end
-        return
-    end
-
-    local shouldRestore = (self.__fwrMainFrameCombatSnapshot == true)
-        or (not inCombat and shouldShowMainFrame == true and forceRefresh == true)
-    if shouldShowMainFrame and shouldRestore and not self.MainFrame:IsShown() then
-        self.MainFrame:Show()
-    elseif shouldShowMainFrame == false and self.MainFrame:IsShown() then
-        self.MainFrame:Hide()
-    end
-
-    if not inCombat then
-        self.__fwrMainFrameCombatSnapshot = nil
-    end
+-- The main window follows the Interface settings: in combat it is minimized to its small button when
+-- "Minimize main window during combat" is on, and it opens again after the fight.
+local function applyMainFrameRule(self, inCombat)
+    self:ApplyMainWindowPresentation(inCombat)
 end
 
 local function applyPanelsRule(self, ui, inCombat)
@@ -89,6 +69,6 @@ function FWR:ApplySettingsVisibilityRules(forceRefresh)
     local ui = self.Settings and self.Settings.ui or {}
     local inCombat = isPlayerInCombat()
 
-    applyMainFrameRule(self, ui, inCombat, forceRefresh)
+    applyMainFrameRule(self, inCombat)
     applyPanelsRule(self, ui, inCombat)
 end
