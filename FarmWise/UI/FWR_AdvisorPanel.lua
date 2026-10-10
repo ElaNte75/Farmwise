@@ -22,9 +22,10 @@ local MAX_STAT_CHARS = 66
 local MODE_ITEM = "item"
 local MODE_GOLD = "gold"
 
--- amounts are written as 12g / 35s with the colors the game uses for gold and silver
-local GOLD_LETTER = "|cffffd700g|r"
-local SILVER_LETTER = "|cffc7c7cfs|r"
+-- amounts are written with the game's own gold and silver coin pictures
+-- (the picture the bag's money display uses: gold, silver and copper side by side, 16 pixels each)
+local GOLD_LETTER = "|TInterface/MoneyFrame/UI-MoneyIcons:11:11:2:-3:64:16:0:16:0:16|t"
+local SILVER_LETTER = "|TInterface/MoneyFrame/UI-MoneyIcons:11:11:2:-3:64:16:16:32:0:16|t"
 
 local GUIDE_TAG_COLOR = { 0.55, 0.8, 1.0 }
 local NOTICE_COLOR = { 1.0, 0.82, 0.0 }
@@ -62,14 +63,13 @@ local function groupThousands(number)
     return text
 end
 
+-- Whole gold, rounded to the nearest. Under one gold the silver is shown, so a cheap amount is not "0".
 local function formatGold(copper)
-    local gold = math.floor((tonumber(copper) or 0) / 10000)
-    if gold >= 1000 then
-        gold = math.floor(gold / 100) * 100
-    elseif gold >= 100 then
-        gold = math.floor(gold / 10) * 10
+    copper = tonumber(copper) or 0
+    if copper > 0 and copper < 5000 then
+        return string.format("%d", math.max(1, math.floor(copper / 100 + 0.5))) .. SILVER_LETTER
     end
-    return groupThousands(gold) .. GOLD_LETTER
+    return groupThousands(math.floor(copper / 10000 + 0.5)) .. GOLD_LETTER
 end
 
 -- Price of one item: gold with one decimal, or silver for cheap items.
@@ -183,13 +183,16 @@ local function placeRow(result)
     local stats
     if mode == MODE_GOLD then
         stats = string.format(
-            "Farming time: %s\nEstimated gold/hour: %s\nLooted gold %s  -  Vendor items %s  -  Materials %s",
+            "Farming time: %s\nEstimated gold/hour: %s\nRaw gold %s  -  Materials %s",
             formatTime(result.totalTime), formatGold(result.goldPerHour),
-            formatGold(result.rawPerHour), formatGold(result.vendorPerHour), formatGold(result.materialsPerHour))
+            formatGold((result.rawPerHour or 0) + (result.vendorPerHour or 0)), formatGold(result.materialsPerHour))
     else
         stats = string.format(
             "Farming time: %s\nGathered: %d items\nAverage yield: %d/hour",
             formatTime(result.totalTime), result.count, result.perHour)
+        if result.valuePerHour then
+            stats = stats .. string.format("\nWorth: %s  per hour at the Auction House", formatGold(result.valuePerHour))
+        end
     end
     return { title = result.zone, right = right, rightColor = rightColor, stats = stats }
 end
@@ -203,6 +206,9 @@ local function overviewRow(result)
     local stats = string.format(
         "Best place: %s\nFarming time: %s\nAverage yield: %d/hour",
         truncate(result.zone, MAX_STAT_CHARS - 12), formatTime(result.totalTime), result.perHour)
+    if result.valuePerHour then
+        stats = stats .. string.format("\nWorth: %s  per hour at the Auction House", formatGold(result.valuePerHour))
+    end
     return { title = title, right = right, rightColor = rightColor, stats = stats }
 end
 

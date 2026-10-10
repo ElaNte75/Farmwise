@@ -18,6 +18,11 @@ one grows when settings or behaviour change.
 - Much lower CPU use: the window is redrawn only when something changed, bursts of loot are drawn once, and
   a hidden window does no work.
 - Zone name starts exactly where "Total:" starts. Smaller IDLE text.
+- Advisor: amounts use the game's gold and silver coin pictures and are rounded to whole gold. "Looted gold" and
+  "Vendor items" are now one line, "Raw gold" (money from mobs plus scrap). In Item mode every result shows
+  what the yield is worth per hour at the current Auction House prices.
+- Advisor, Item mode: without "Include quality" all qualities of an item are now one line (before, each quality was a
+  separate unlabeled line); with it, each quality shows separately with its own worth. "Include quality" is now on by default.
 - Explanations (tooltips) for the new options.
 
 ## 4.0.0 beta

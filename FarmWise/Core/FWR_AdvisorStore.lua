@@ -29,7 +29,7 @@ FWR.AUCTION_HOUSE_CUT = AUCTION_HOUSE_CUT   -- the main window's session gold us
 
 local DEFAULT_ADVISOR_SETTINGS = {
     currentExpansionOnly = true,   -- ignore items older than the current expansion
-    includeQuality = false,        -- item search: false adds up every quality of the item
+    includeQuality = true,         -- item mode: each quality on its own line (false adds the qualities up)
 }
 
 -- Profession skill line IDs.
@@ -512,6 +512,7 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, inclu
     for _, group in pairs(groups) do
         if group.time >= self.ADVISOR_MIN_SECONDS then
             local count = 0
+            local value = 0
             local matchedName = nil
             for _, info in pairs(group.items) do
                 local matches
@@ -526,6 +527,10 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, inclu
                 if matches then
                     count = count + info.count
                     matchedName = info.name
+                    local price = self:GetAuctionPrice(info.id, true)
+                    if price then
+                        value = value + price * info.count
+                    end
                 end
             end
 
@@ -536,6 +541,7 @@ function FWR:BuildAdvisorItemResults(queryText, exactItemID, exactQuality, inclu
                     totalTime = group.time,
                     count = count,
                     perHour = math.floor((count / group.time) * 3600),
+                    valuePerHour = value > 0 and (value * (1 - AUCTION_HOUSE_CUT) / group.time * 3600) or nil,
                     itemName = matchedName,
                     confidence = label,
                     confidenceColor = { r, g, b },
@@ -610,13 +616,19 @@ function FWR:BuildAdvisorItemOverview(includeQuality)
         if group.time >= self.ADVISOR_MIN_SECONDS then
             local perItem = {}
             for _, info in pairs(group.items) do
-                local key = includeQuality and (tostring(info.id) .. "|" .. tostring(info.quality)) or tostring(info.id)
+                -- every quality of an item has its own item ID: without "Include quality" they share a name, so
+                -- they are added up under it (each quality worth its own price)
+                local key = includeQuality and (tostring(info.id) .. "|" .. tostring(info.quality)) or (normalizeName(info.name) or tostring(info.id))
                 local entry = perItem[key]
                 if not entry then
-                    entry = { name = info.name, quality = includeQuality and info.quality or nil, count = 0 }
+                    entry = { name = info.name, quality = includeQuality and info.quality or nil, count = 0, value = 0 }
                     perItem[key] = entry
                 end
                 entry.count = entry.count + info.count
+                local price = self:GetAuctionPrice(info.id, true)
+                if price then
+                    entry.value = entry.value + price * info.count
+                end
             end
 
             for key, entry in pairs(perItem) do
@@ -632,6 +644,7 @@ function FWR:BuildAdvisorItemOverview(includeQuality)
                             totalTime = group.time,
                             count = entry.count,
                             perHour = perHour,
+                            valuePerHour = entry.value > 0 and (entry.value * (1 - AUCTION_HOUSE_CUT) / group.time * 3600) or nil,
                             confidence = label,
                             confidenceColor = { r, g, b },
                         }
