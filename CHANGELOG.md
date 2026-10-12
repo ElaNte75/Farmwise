@@ -14,6 +14,36 @@ one grows when settings or behaviour change.
   right. Options > Interface: keep or not, and a button to start again from the smallest widths.
 - The title area of the window is dark and does not follow the transparency, so it stays readable.
 
+- Experimental: a "FarmWise" tab next to the tabs of the Auction House lists the materials you farmed and carry,
+  with the lowest price now, a price you can raise or lower, an amount, and a Post button.
+- Right-click an item of that list opens the game's own menu: do not show it, or keep a number of it in your
+  bags. Items a vendor pays more for than the Auction House (after its 5%) are left out of the list, and
+  their tooltip says so. "Show hidden items" at the bottom switches to the list of everything left out, where
+  a right-click shows an item again or changes its filters.
+- The list of the tab holds everything of your bags that the Auction House sells by amount (materials, potions,
+  food, runes, gems...), not only what you farmed. Options "AH Tab List": only what you farmed, and which groups
+  to show. Gear is not in it.
+- Price check (right-click an item, "Turn on price check"): when the price to post is unusually low against
+  where most of the listings are, Post waits and the first "+" goes straight to the lowest usual price. FarmWise
+  also starts to keep a short daily price history of the materials you farm.
+- Scan levels (Options > Scanner): trade materials are always scanned; "Also scan everything else sold
+  by amount" adds consumables, gems and enhancements; "Scan the whole Auction House" reads everything.
+- The tooltip of an item that the AH Tab leaves out because a vendor pays more now has its own "FarmWise Info"
+  block with both prices.
+- All Options pages were re-arranged: sections with small titles, tighter spacing, nothing outside the frame,
+  and a scrollbar when a page is taller than the window.
+- Sales history: a "History" page next to "Sell" in the FarmWise tab. It counts what you sell when you take
+  the gold of a sale (and the items of an expired auction) from your mailbox: pieces sold, gold earned after the
+  5% cut, price of one, returned unsold and the share that was sold. Every column title sorts the list.
+  Switch it off in Options > Auction House ("Keep a sales history").
+- Manual: a new "Manual" page in the options (under Info) with a list of chapters. A click opens the chapter,
+  "Back" (next to Close) returns to the list.
+- Price step: Options > Auction House has a slider (1% to 20%, 5% by default) for how much one click of + or -
+  changes the price in the FarmWise tab.
+- Never below my average price: an option for all items (Options > Auction House) and for one item (right-click).
+  The price starts at the higher of the lowest price now and the average of your last sales, and "-" and Post stop
+  at that average. It needs at least 3 sales and 20 pieces in the History.
+
 **Improved**
 - Much lower CPU use: the window is redrawn only when something changed, bursts of loot are drawn once, and
   a hidden window does no work.

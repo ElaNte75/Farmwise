@@ -11,6 +11,9 @@ Core/FWR_Storage.lua
 Data/FWR_StarterGuideData.lua
 Core/FWR_AdvisorStore.lua
 Core/FWR_AuctionScan.lua
+Core/FWR_SellFilters.lua
+Core/FWR_PriceHistory.lua
+Core/FWR_SalesHistory.lua
 Core/FWR_RarityFilter.lua
 Core/FWR_SessionReset.lua
 Core/FWR_AutoReset.lua
@@ -40,7 +43,12 @@ UI/FWR_ControlPanelConfigurator.lua
 UI/FWR_MainWindowControls.lua
 UI/FWR_CombatVisibility.lua
 UI/FWR_ControlPanelWindow.lua
+UI/FWR_ManualContent.lua
+UI/FWR_ManualPage.lua
 UI/FWR_LauncherIcon.lua
 UI/FWR_AdvisorPanel.lua
 UI/FWR_PriceTooltip.lua
+UI/FWR_SellFilterMenu.lua
+UI/FWR_AuctionSellTab.lua
+UI/FWR_AuctionHistoryPage.lua
 FarmWiseReforged.lua

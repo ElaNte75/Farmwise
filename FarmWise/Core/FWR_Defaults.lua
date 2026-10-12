@@ -81,7 +81,26 @@ FWR.DEFAULT_SETTINGS = {
         sound = true,
         tooltipPrice = true,
         fullScan = false,
+        scanCommodities = true,    -- the scan also reads the commodities (everything else that is sold by amount)
         freshnessMinutes = 30,
+        -- the FarmWise tab of the Auction House
+        tabOnlyFarmed = false,      -- the list: only what you have farmed (off: everything that can be sold)
+        tabShowTrade = true,        -- the list: trade materials
+        tabShowConsumables = true,  -- the list: consumables (potions, flasks, food, runes)
+        tabShowGems = true,         -- the list: gems and enhancements
+        tabShowOther = true,        -- the list: any other commodity
+        tabWheel = false,       -- the mouse wheel posts the next item, while the tab is open
+        tabWheelShift = true,   -- ... but only while Shift is held (so a scroll by accident posts nothing)
+        tabTooltips = true,     -- the tooltips of the tab
+        tabEnabled = true,      -- the tab is there at all (off: none of what it brings is on)
+        tabPostTime = 1,        -- 1 = 12 hours, 2 = 24 hours, 3 = 48 hours
+        tabPriceCheck = false,  -- price check on for all items (an item can differ)
+        tabAverageSales = 10,    -- the average price is made of this many of the last sales (5 to 30)
+        tabAverageFloor = false, -- never post below the average price of your last sales (an item can differ)
+        tabPriceStep = 5,       -- the "+" and "-" of the price change it by this many percent (1 to 20)
+        tabShowTrend = true,    -- the Trend column (after a /reload)
+        tabShowValue = true,    -- the Value column (after a /reload)
+        tabHistory = true,      -- keep a history of the sales and show its page in the tab
     },
     engine = {
         sessionResetMode = "manual",

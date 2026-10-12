@@ -240,6 +240,108 @@ local function attachTooltip(frame, title, text)
     end)
 end
 
+-- ===== Layout of the pages =====
+-- A page is a column of sections: a small gold title with a thin line under it, then what belongs to it.
+-- A page that is taller than the window scrolls (the scrollbar is there only when it is needed).
+
+local PAGE_CONTENT_WIDTH = WINDOW_WIDTH - SIDEBAR_WIDTH - 2 * CONTENT_PADDING - 26
+
+-- The distances every page uses, so all of them look made by the same hand (pixels, downwards).
+local GAP_AFTER_LINE = 8      -- the line of a section title -> the first checkbox
+local GAP_AFTER_NOTE = 12     -- a note or a small title -> the first checkbox under it
+local GAP_NEXT_CHECK = -2     -- a checkbox -> the next one (the boxes are 26 high: this makes 24 per row)
+local GAP_SECTION = 20        -- the last thing of a section -> the title of the next section
+
+-- The title of a section. anchor = what it goes under (nil: the top of the page). Returns the line under the
+-- title: whatever belongs to the section is anchored to it.
+local function createSection(page, title, anchor, gap)
+    local label = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    if anchor then
+        label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -(gap or GAP_SECTION))
+    else
+        label:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -2)
+    end
+    label:SetJustifyH("LEFT")
+    label:SetTextColor(0.95, 0.82, 0.42, 1)
+    label:SetText(title or "")
+
+    local line = page:CreateTexture(nil, "ARTWORK")
+    line:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -3)
+    line:SetPoint("RIGHT", page, "RIGHT", -4, 0)
+    line:SetHeight(1)
+    line:SetColorTexture(0.85, 0.65, 0.15, 0.35)
+    return line, label
+end
+
+-- A short explanation in small grey text, wrapped inside the page.
+local function createNote(page, text, anchor, offsetX, gap)
+    local note = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    note:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", offsetX or 0, -(gap or 6))
+    note:SetPoint("RIGHT", page, "RIGHT", -8, 0)
+    note:SetJustifyH("LEFT")
+    note:SetJustifyV("TOP")
+    note:SetTextColor(0.72, 0.72, 0.72, 1)
+    note:SetText(text or "")
+    return note
+end
+
+-- Puts a page inside a scroll frame. createFn(content, ...) builds the page; the scroll frame is what
+-- the window shows and hides, and its .Page is the page itself.
+local function createScrollPage(parent, createFn, ...)
+    local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -24, 0)
+
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(PAGE_CONTENT_WIDTH, 10)
+    scroll:SetScrollChild(content)
+
+    local page = createFn(content, ...)
+    scroll.Page = page
+
+    -- the height of the page is where its lowest part ends
+    local function measure()
+        local top = content:GetTop()
+        if not top then
+            return
+        end
+        local lowest = top
+        local function consider(object)
+            if object.IsShown and not object:IsShown() then
+                return
+            end
+            local bottom = object:GetBottom()
+            if bottom and bottom < lowest then
+                lowest = bottom
+            end
+        end
+        for _, region in ipairs({ page:GetRegions() }) do
+            consider(region)
+        end
+        for _, child in ipairs({ page:GetChildren() }) do
+            consider(child)
+        end
+
+        local needed = top - lowest + 14
+        local viewport = scroll:GetHeight() or 0
+        content:SetHeight(math.max(needed, viewport, 10))
+        local bar = scroll.ScrollBar
+        if bar then
+            bar:SetShown(needed > viewport + 1)
+        end
+        if needed <= viewport + 1 then
+            scroll:SetVerticalScroll(0)
+        end
+    end
+    scroll.FWRMeasure = measure
+    scroll:HookScript("OnShow", function()
+        measure()
+        C_Timer.After(0, measure)
+    end)
+
+    return scroll
+end
+
 local function createCategoryButton(parent, label)
     local navButtonConfig = CATEGORY_CONFIG.button or {}
     local navTextColor = COLOR_CONFIG.navText or { 0.96, 0.96, 0.96, 1.0 }
@@ -320,7 +422,7 @@ local function updateDisplayCheckboxVisual(check, isLocked, isEnabled)
     if isLocked then
         check:SetAlpha(0.75)
         if check.Text then
-            check.Text:SetTextColor(0.88, 0.88, 0.88, 0.95)
+            check.Text:SetTextColor(1.0, 0.82, 0.0, 0.9)
         end
         return
     end
@@ -328,7 +430,7 @@ local function updateDisplayCheckboxVisual(check, isLocked, isEnabled)
     if isEnabled then
         check:SetAlpha(1)
         if check.Text then
-            check.Text:SetTextColor(0.82, 0.82, 0.82, 1)
+            check.Text:SetTextColor(1.0, 0.82, 0.0, 1.0)
         end
     else
         check:SetAlpha(0.55)
@@ -388,7 +490,7 @@ local function createDisplayPage(parent, frame)
     transparencyTitle:SetPoint("TOPLEFT", transparencyConfig.titleX or 0, transparencyConfig.titleY or -26)
     transparencyTitle:SetJustifyH("LEFT")
     transparencyTitle:SetTextColor(1, 1, 1, 1)
-    transparencyTitle:SetText(transparencyConfig.title or "Frame Transparency")
+    transparencyTitle:SetText(transparencyConfig.title or "Set Transparency")
 
     local transparencySlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
     transparencySlider:SetPoint("TOPLEFT", transparencyConfig.sliderX or 180, transparencyConfig.sliderY or -28)
@@ -419,12 +521,12 @@ local function createDisplayPage(parent, frame)
 
     local visibilityHeader = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     visibilityHeader:SetPoint("TOPLEFT", (headerConfig.visibility and headerConfig.visibility.x) or 0, (headerConfig.visibility and headerConfig.visibility.y) or -80)
-    visibilityHeader:SetTextColor(1, 1, 1, 1)
+    visibilityHeader:SetTextColor(0.95, 0.82, 0.42, 1)
     visibilityHeader:SetText((headerConfig.visibility and headerConfig.visibility.text) or "Enable / Disable Columns")
 
     local orderHeader = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     orderHeader:SetPoint("TOPLEFT", (headerConfig.order and headerConfig.order.x) or 180, (headerConfig.order and headerConfig.order.y) or -80)
-    orderHeader:SetTextColor(1, 1, 1, 1)
+    orderHeader:SetTextColor(0.95, 0.82, 0.42, 1)
     orderHeader:SetText((headerConfig.order and headerConfig.order.text) or "Reorder Columns")
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, page, "UIPanelScrollFrameTemplate")
@@ -451,7 +553,7 @@ local function createDisplayPage(parent, frame)
         rowSlider.__fwrRefreshing = nil
 
         local transparencyValue = math.max(0, math.min(100, getNumberSetting({ "display", "frameTransparency" }, 50)))
-        transparencyTitle:SetText(string.format("Frame Transparency (%d%%)", transparencyValue))
+        transparencyTitle:SetText(string.format("Set Transparency (%d%%)", transparencyValue))
         transparencySlider.__fwrRefreshing = true
         transparencySlider:SetValue(transparencyValue)
         transparencySlider.__fwrPendingTransparencyValue = transparencyValue
@@ -573,11 +675,11 @@ local function createDisplayPage(parent, frame)
         local snapped = math.floor((tonumber(value) or 0) + 0.5)
         local clamped = math.max(0, math.min(100, snapped))
         if getNumberSetting({ "display", "frameTransparency" }, 50) == clamped then
-            transparencyTitle:SetText(string.format("Frame Transparency (%d%%)", clamped))
+            transparencyTitle:SetText(string.format("Set Transparency (%d%%)", clamped))
             return
         end
         setNumberSetting({ "display", "frameTransparency" }, clamped)
-        transparencyTitle:SetText(string.format("Frame Transparency (%d%%)", clamped))
+        transparencyTitle:SetText(string.format("Set Transparency (%d%%)", clamped))
         applyDisplayRefresh()
     end
 
@@ -612,7 +714,7 @@ local function createDisplayPage(parent, frame)
         end
         local clamped = math.max(0, math.min(100, snapped))
         self.__fwrPendingTransparencyValue = clamped
-        transparencyTitle:SetText(string.format("Frame Transparency (%d%%)", clamped))
+        transparencyTitle:SetText(string.format("Set Transparency (%d%%)", clamped))
     end)
     transparencySlider:SetScript("OnMouseUp", function(self)
         commitTransparency(self.__fwrPendingTransparencyValue or self:GetValue())
@@ -627,7 +729,7 @@ local function createDisplayPage(parent, frame)
         if index == 1 then
             check:SetPoint("TOPLEFT", checkboxConfig.startX or 0, checkboxConfig.startY or -8)
         else
-            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -GAP_NEXT_CHECK)
         end
         check:SetHitRectInsets(0, 0, 0, 0)
         if check.Text then
@@ -707,7 +809,7 @@ local function createDisplayPage(parent, frame)
         previous = check
     end
 
-    local childHeight = math.max(240, (#DISPLAY_CONTROL_ENTRIES * 30) + 20)
+    local childHeight = math.max(240, (#DISPLAY_CONTROL_ENTRIES * 24) + 20)
     scrollChild:SetSize(420, childHeight)
 
     page.RefreshDisplayControls = refreshDisplayControls
@@ -729,15 +831,28 @@ local function createInterfacePage(parent, frame)
     local checkboxConfig = interfaceConfig.checkbox or {}
     page.InterfaceControls = {}
 
+    local sectionTitles = {}
+    for _, section in ipairs(interfaceConfig.sections or {}) do
+        sectionTitles[section.key] = section.title
+    end
+
     local previous
+    local currentSection
+    local afterTitle
     for index, option in ipairs(INTERFACE_OPTIONS) do
         local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
         check:SetHitRectInsets(0, 0, 0, 0)
 
-        if index == 1 then
-            check:SetPoint("TOPLEFT", checkboxConfig.startX or 0, checkboxConfig.startY or -2)
+        if option.section ~= currentSection then
+            currentSection = option.section
+            previous = createSection(page, sectionTitles[currentSection] or "", previous)
+            afterTitle = true
+        end
+        if afterTitle then
+            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -GAP_AFTER_LINE)
+            afterTitle = false
         else
-            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -GAP_NEXT_CHECK)
         end
 
         if check.Text then
@@ -773,7 +888,8 @@ local function createInterfacePage(parent, frame)
     -- start again from the smallest column widths
     local resetWidths = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
     resetWidths:SetSize(170, 24)
-    resetWidths:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 4, -14)
+    local layoutLine = createSection(page, sectionTitles.layout or "Window layout", previous)
+    resetWidths:SetPoint("TOPLEFT", layoutLine, "BOTTOMLEFT", 4, -GAP_AFTER_NOTE)
     resetWidths:SetText("Reset column widths")
     resetWidths:SetScript("OnClick", function()
         if FWR.ResetColumnWidthMemory then
@@ -920,14 +1036,27 @@ local function createTrackingPage(parent)
 
     local trackingConfig = PAGE_CONFIG.tracking or {}
     local checkboxConfig = trackingConfig.checkbox or {}
+    local sectionTitles = {}
+    for _, section in ipairs(trackingConfig.sections or {}) do
+        sectionTitles[section.key] = section.title
+    end
+
     local previous
+    local currentSection
+    local afterTitle
     for index, option in ipairs(TRACKING_OPTIONS) do
         local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
         check:SetHitRectInsets(0, 0, 0, 0)
-        if index == 1 then
-            check:SetPoint("TOPLEFT", checkboxConfig.startX or 0, checkboxConfig.startY or -2)
+        if option.section ~= currentSection then
+            currentSection = option.section
+            previous = createSection(page, sectionTitles[currentSection] or "", previous)
+            afterTitle = true
+        end
+        if afterTitle then
+            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -GAP_AFTER_LINE)
+            afterTitle = false
         else
-            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -GAP_NEXT_CHECK)
         end
 
         if check.Text then
@@ -1014,20 +1143,22 @@ local function createEnginePage(parent)
         end
     end
 
+    local resetLine = createSection(page, "Session reset")
     local manualCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    manualCheck:SetPoint("TOPLEFT", checkboxConfig.startX or 0, checkboxConfig.startY or -2)
+    manualCheck:SetPoint("TOPLEFT", resetLine, "BOTTOMLEFT", 0, -GAP_AFTER_LINE)
     styleEngineCheck(manualCheck, (engineConfig.manualReset and engineConfig.manualReset.label) or "Manual Session Reset")
 
     local localCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    localCheck:SetPoint("TOPLEFT", manualCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+    localCheck:SetPoint("TOPLEFT", manualCheck, "BOTTOMLEFT", 0, -GAP_NEXT_CHECK)
     styleEngineCheck(localCheck, localResetConfig.label or "Local Session Reset")
 
     attachTooltip(manualCheck, (engineConfig.manualReset or {}).label, (engineConfig.manualReset or {}).tooltip)
     attachTooltip(localCheck, localResetConfig.label, localResetConfig.tooltip)
 
     local localTimeSlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
-    localTimeSlider:SetPoint("LEFT", localCheck, "LEFT", localResetConfig.sliderX or 190, localResetConfig.sliderY or -1)
-    localTimeSlider:SetWidth(localResetConfig.sliderWidth or 130)
+    -- every slider sits on its own line under its option, one step in, so the option can have a long text
+    localTimeSlider:SetPoint("TOPLEFT", localCheck, "BOTTOMLEFT", 30, -4)
+    localTimeSlider:SetWidth(200)
     localTimeSlider:SetMinMaxValues(0, 95)
     localTimeSlider:SetValueStep(1)
     localTimeSlider:SetObeyStepOnDrag(true)
@@ -1044,15 +1175,15 @@ local function createEnginePage(parent)
 
     local autoResetConfig = engineConfig.autoReset or {}
     local autoCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    autoCheck:SetPoint("TOPLEFT", localCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+    autoCheck:SetPoint("TOPLEFT", localTimeSlider, "BOTTOMLEFT", -30, -22)
     styleEngineCheck(autoCheck, autoResetConfig.label or "Auto Session Reset")
     attachTooltip(autoCheck, autoResetConfig.label, autoResetConfig.tooltip)
 
     -- how long you may stay away from an area, after a fight, before its session starts over: 15 seconds to 2 minutes
     local AUTO_DELAY_STEP, AUTO_DELAY_STEPS = 15, 8
     local autoDelaySlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
-    autoDelaySlider:SetPoint("LEFT", autoCheck, "LEFT", autoResetConfig.sliderX or 190, autoResetConfig.sliderY or -1)
-    autoDelaySlider:SetWidth(autoResetConfig.sliderWidth or 130)
+    autoDelaySlider:SetPoint("TOPLEFT", autoCheck, "BOTTOMLEFT", 30, -4)
+    autoDelaySlider:SetWidth(200)
     autoDelaySlider:SetMinMaxValues(1, AUTO_DELAY_STEPS)
     autoDelaySlider:SetValueStep(1)
     autoDelaySlider:SetObeyStepOnDrag(true)
@@ -1075,14 +1206,18 @@ local function createEnginePage(parent)
     end
 
     local rarityCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    rarityCheck:SetPoint("TOPLEFT", autoCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+    local afterAuto = CreateFrame("Frame", nil, page)
+    afterAuto:SetSize(1, 1)
+    afterAuto:SetPoint("TOPLEFT", autoDelaySlider, "BOTTOMLEFT", -30, -12)
+    local rarityLine = createSection(page, "Rarity filter", afterAuto, GAP_SECTION)
+    rarityCheck:SetPoint("TOPLEFT", rarityLine, "BOTTOMLEFT", 0, -GAP_AFTER_LINE)
     styleEngineCheck(rarityCheck, rarityConfig.label or "Set Rarity Level")
 
     attachTooltip(rarityCheck, rarityConfig.label, rarityConfig.tooltip)
 
     local raritySlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
-    raritySlider:SetPoint("LEFT", rarityCheck, "LEFT", rarityConfig.sliderX or 190, rarityConfig.sliderY or -1)
-    raritySlider:SetWidth(rarityConfig.sliderWidth or 130)
+    raritySlider:SetPoint("TOPLEFT", rarityCheck, "BOTTOMLEFT", 30, -4)
+    raritySlider:SetWidth(200)
     raritySlider:SetMinMaxValues(1, #ENGINE_RARITY_LEVEL_VALUES)
     raritySlider:SetValueStep(1)
     raritySlider:SetObeyStepOnDrag(true)
@@ -1279,6 +1414,7 @@ local function createAuctionPage(parent)
     page:SetAllPoints(parent)
 
     local config = PAGE_CONFIG.auction or {}
+    local titles = config.sections or {}
     local checkboxConfig = (PAGE_CONFIG.engine or {}).checkbox or {}
 
     local function styleCheck(check, text)
@@ -1291,56 +1427,50 @@ local function createAuctionPage(parent)
         end
     end
 
-    local note = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    note:SetPoint("TOPLEFT", 0, -2)
-    note:SetPoint("RIGHT", page, "RIGHT", -18, 0)
-    note:SetJustifyH("LEFT")
-    note:SetJustifyV("TOP")
-    note:SetText(config.note or "")
+    local function newCheck(anchor, gap, entry)
+        local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+        check:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
+        styleCheck(check, entry.label)
+        attachTooltip(check, entry.label, entry.tooltip)
+        return check
+    end
 
-    local autoCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    autoCheck:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
-    styleCheck(autoCheck, (config.autoScan or {}).label)
+    -- Scanning
+    local scanLine = createSection(page, titles.scanning or "Scanning")
+    local note = createNote(page, config.note or "", scanLine, 0, 6)
+    local autoCheck = newCheck(note, GAP_AFTER_NOTE, config.autoScan or {})
+    local soundCheck = newCheck(autoCheck, GAP_NEXT_CHECK, config.sound or {})
 
-    local soundCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    soundCheck:SetPoint("TOPLEFT", autoCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
-    styleCheck(soundCheck, (config.sound or {}).label)
+    -- What is scanned
+    local depthLine = createSection(page, titles.depth or "What is scanned", soundCheck)
+    local depthNote = createNote(page, config.depthNote or "", depthLine, 0, 6)
+    local commoditiesCheck = newCheck(depthNote, GAP_AFTER_NOTE, config.commodities or {})
+    local fullCheck = newCheck(commoditiesCheck, GAP_NEXT_CHECK, config.fullScan or {})
 
-    local tooltipCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    tooltipCheck:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
-    styleCheck(tooltipCheck, (config.tooltipPrice or {}).label)
-
-    local fullCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    fullCheck:SetPoint("TOPLEFT", tooltipCheck, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
-    styleCheck(fullCheck, (config.fullScan or {}).label)
-
-    local fullNote = page:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    fullNote:SetPoint("TOPLEFT", fullCheck, "BOTTOMLEFT", 26, 0)
-    fullNote:SetPoint("RIGHT", page, "RIGHT", -18, 0)
-    fullNote:SetJustifyH("LEFT")
-    fullNote:SetJustifyV("TOP")
-    fullNote:SetText((config.fullScan or {}).note or "")
-
-    attachTooltip(autoCheck, (config.autoScan or {}).label, (config.autoScan or {}).tooltip)
-    attachTooltip(soundCheck, (config.sound or {}).label, (config.sound or {}).tooltip)
-    attachTooltip(tooltipCheck, (config.tooltipPrice or {}).label, (config.tooltipPrice or {}).tooltip)
-    attachTooltip(fullCheck, (config.fullScan or {}).label, (config.fullScan or {}).tooltip)
-
-    local intervalTitle = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    intervalTitle:SetPoint("TOPLEFT", fullNote, "BOTTOMLEFT", -26, -14)
+    -- How often
+    local intervalLine = createSection(page, titles.interval or "How often", fullCheck)
+    local intervalNote = createNote(page, config.intervalNote or "", intervalLine, 0, 6)
+    local intervalTitle = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    intervalTitle:SetPoint("TOPLEFT", intervalNote, "BOTTOMLEFT", 0, -8)
     intervalTitle:SetTextColor(1, 1, 1, 1)
     intervalTitle:SetText(config.intervalTitle or "")
 
     local intervalChecks = {}
     local previous = intervalTitle
+    local firstInterval = true
     for _, interval in ipairs(config.intervals or {}) do
         local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-        check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -(checkboxConfig.spacing or 6))
+        check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, firstInterval and -GAP_AFTER_LINE or -GAP_NEXT_CHECK)
+        firstInterval = false
         styleCheck(check, interval.label)
         check.minutes = interval.minutes
         intervalChecks[#intervalChecks + 1] = check
         previous = check
     end
+
+    -- Tooltips
+    local tooltipLine = createSection(page, titles.tooltips or "Tooltips", previous)
+    local tooltipCheck = newCheck(tooltipLine, GAP_AFTER_LINE, config.tooltipPrice or {})
 
     local function refresh()
         local autoEnabled = getBooleanSetting({ "ah", "autoScan" }, true)
@@ -1353,8 +1483,17 @@ local function createAuctionPage(parent)
         tooltipCheck:SetChecked(getBooleanSetting({ "ah", "tooltipPrice" }, true))
         updateCheckboxVisual(tooltipCheck)
 
-        fullCheck:SetChecked(getBooleanSetting({ "ah", "fullScan" }, false))
+        -- the whole Auction House includes everything sold by amount
+        local full = getBooleanSetting({ "ah", "fullScan" }, false)
+        fullCheck:SetChecked(full)
         updateCheckboxVisual(fullCheck)
+        commoditiesCheck:SetChecked(full or getBooleanSetting({ "ah", "scanCommodities" }, true))
+        if full then
+            commoditiesCheck:Disable()
+        else
+            commoditiesCheck:Enable()
+        end
+        updateCheckboxVisual(commoditiesCheck)
 
         local current = getNumberSetting({ "ah", "freshnessMinutes" }, 30)
         for _, check in ipairs(intervalChecks) do
@@ -1384,6 +1523,11 @@ local function createAuctionPage(parent)
         refresh()
     end)
 
+    commoditiesCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "scanCommodities" }, self:GetChecked() == true)
+        refresh()
+    end)
+
     fullCheck:SetScript("OnClick", function(self)
         setBooleanSetting({ "ah", "fullScan" }, self:GetChecked() == true)
         refresh()
@@ -1404,6 +1548,368 @@ local function createAuctionPage(parent)
     return page
 end
 
+local function createSellTabPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints(parent)
+
+    local config = PAGE_CONFIG.selltab or {}
+    local titles = config.sections or {}
+    local checkboxConfig = (PAGE_CONFIG.engine or {}).checkbox or {}
+
+    local function styleCheck(check, text)
+        check:SetHitRectInsets(0, 0, 0, 0)
+        if check.Text then
+            check.Text:ClearAllPoints()
+            check.Text:SetPoint("LEFT", check, "RIGHT", checkboxConfig.textOffsetX or 0, checkboxConfig.textOffsetY or 1)
+            check.Text:SetJustifyH("LEFT")
+            check.Text:SetText(text or "")
+        end
+    end
+
+    local function newCheck(anchor, gap, entry, offsetX)
+        local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+        check:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", offsetX or 0, -gap)
+        styleCheck(check, entry.label)
+        attachTooltip(check, entry.label, entry.tooltip)
+        return check
+    end
+
+    -- The tab
+    local tabLine = createSection(page, titles.tab or "The tab")
+    local note = createNote(page, config.note or "", tabLine, 0, 6)
+    local enabledCheck = newCheck(note, GAP_AFTER_NOTE, config.enabled or {})
+
+    -- Posting
+    local postingLine = createSection(page, titles.posting or "Posting", enabledCheck)
+    local durationTitle = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    durationTitle:SetPoint("TOPLEFT", postingLine, "BOTTOMLEFT", 0, -8)
+    durationTitle:SetTextColor(1, 1, 1, 1)
+    durationTitle:SetText(config.durationTitle or "")
+
+    -- the three times side by side
+    local durationChecks = {}
+    local previousDuration
+    for _, entry in ipairs(config.durations or {}) do
+        local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+        if previousDuration then
+            check:SetPoint("LEFT", previousDuration.Text, "RIGHT", 18, 0)
+        else
+            check:SetPoint("TOPLEFT", durationTitle, "BOTTOMLEFT", 0, -GAP_AFTER_LINE)
+        end
+        styleCheck(check, entry.label)
+        check.value = entry.value
+        durationChecks[#durationChecks + 1] = check
+        previousDuration = check
+    end
+
+    -- the step of + and -: a slider, from 1% to 20%
+    local stepConfig = config.priceStep or {}
+    local stepTitle = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    stepTitle:SetPoint("TOPLEFT", durationChecks[1] or durationTitle, "BOTTOMLEFT", 0, -14)
+    stepTitle:SetTextColor(1, 1, 1, 1)
+    stepTitle:SetText(stepConfig.title or "")
+
+    local stepSlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
+    stepSlider:SetPoint("TOPLEFT", stepTitle, "BOTTOMLEFT", 6, -12)
+    stepSlider:SetWidth(200)
+    stepSlider:SetMinMaxValues(1, 20)
+    stepSlider:SetValueStep(1)
+    stepSlider:SetObeyStepOnDrag(true)
+    stepSlider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    if stepSlider.Text then stepSlider.Text:SetText("") end
+    if stepSlider.Low then stepSlider.Low:SetText("1%") end
+    if stepSlider.High then stepSlider.High:SetText("20%") end
+    attachTooltip(stepSlider, stepConfig.title, stepConfig.tooltip)
+
+    local stepValue = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    stepValue:SetPoint("LEFT", stepSlider, "RIGHT", 10, 0)
+    stepValue:SetJustifyH("LEFT")
+    stepValue:SetTextColor(1, 0.82, 0, 1)
+
+    local afterStep = CreateFrame("Frame", nil, page)
+    afterStep:SetSize(1, 1)
+    afterStep:SetPoint("TOPLEFT", stepSlider, "BOTTOMLEFT", -6, -22)
+
+    local priceCheck = newCheck(afterStep, GAP_NEXT_CHECK, config.priceCheck or {})
+    local averageCheck = newCheck(priceCheck, GAP_NEXT_CHECK, config.averageFloor or {})
+
+    -- the number of sales the average price is made of: a slider, from 5 to 30
+    local salesConfig = config.averageSales or {}
+    local salesTitle = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    salesTitle:SetPoint("TOPLEFT", averageCheck, "BOTTOMLEFT", 0, -10)
+    salesTitle:SetTextColor(1, 1, 1, 1)
+    salesTitle:SetText(salesConfig.title or "")
+
+    local salesSlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
+    salesSlider:SetPoint("TOPLEFT", salesTitle, "BOTTOMLEFT", 6, -12)
+    salesSlider:SetWidth(200)
+    salesSlider:SetMinMaxValues(5, 30)
+    salesSlider:SetValueStep(1)
+    salesSlider:SetObeyStepOnDrag(true)
+    salesSlider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    if salesSlider.Text then salesSlider.Text:SetText("") end
+    if salesSlider.Low then salesSlider.Low:SetText("5") end
+    if salesSlider.High then salesSlider.High:SetText("30") end
+    attachTooltip(salesSlider, salesConfig.title, salesConfig.tooltip)
+
+    local salesValue = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    salesValue:SetPoint("LEFT", salesSlider, "RIGHT", 10, 0)
+    salesValue:SetJustifyH("LEFT")
+    salesValue:SetTextColor(1, 0.82, 0, 1)
+
+    local afterSales = CreateFrame("Frame", nil, page)
+    afterSales:SetSize(1, 1)
+    afterSales:SetPoint("TOPLEFT", salesSlider, "BOTTOMLEFT", -6, -20)
+    local wheelCheck = newCheck(afterSales, 0, config.wheel or {})
+    -- one step in: it belongs to the wheel option above
+    local shiftCheck = newCheck(wheelCheck, GAP_NEXT_CHECK, config.wheelShift or {}, 24)
+
+    -- Display
+    -- the sections start at the margin: the step in of the Shift option is not passed on to them
+    local afterShift = CreateFrame("Frame", nil, page)
+    afterShift:SetSize(1, 1)
+    afterShift:SetPoint("TOPLEFT", shiftCheck, "BOTTOMLEFT", -24, 0)
+    local displayLine = createSection(page, titles.display or "Display", afterShift)
+    local tooltipsCheck = newCheck(displayLine, GAP_AFTER_LINE, config.tooltips or {})
+    local trendCheck = newCheck(tooltipsCheck, GAP_NEXT_CHECK, config.showTrend or {})
+    local valueCheck = newCheck(trendCheck, GAP_NEXT_CHECK, config.showValue or {})
+
+    -- Sales history
+    local historyLine = createSection(page, titles.history or "Sales history", valueCheck)
+    local historyCheck = newCheck(historyLine, GAP_AFTER_LINE, config.history or {})
+
+    local function refresh()
+        local enabled = getBooleanSetting({ "ah", "tabEnabled" }, true)
+        enabledCheck:SetChecked(enabled)
+        updateCheckboxVisual(enabledCheck)
+        durationTitle:SetAlpha(enabled and 1 or 0.45)
+
+        local current = getNumberSetting({ "ah", "tabPostTime" }, 1)
+        for _, check in ipairs(durationChecks) do
+            check:SetChecked(check.value == current)
+            if enabled then
+                check:Enable()
+            else
+                check:Disable()
+            end
+            updateCheckboxVisual(check)
+        end
+        for _, check in ipairs({ priceCheck, averageCheck, tooltipsCheck, wheelCheck, trendCheck, valueCheck, historyCheck }) do
+            if enabled then
+                check:Enable()
+            else
+                check:Disable()
+            end
+        end
+
+        local stepNow = math.max(1, math.min(20, math.floor(getNumberSetting({ "ah", "tabPriceStep" }, 5) + 0.5)))
+        stepSlider.__fwrRefreshing = true
+        stepSlider:SetValue(stepNow)
+        stepSlider.__fwrRefreshing = nil
+        stepValue:SetText(string.format("%d%%", stepNow))
+        stepSlider:SetEnabled(enabled)
+        stepTitle:SetAlpha(enabled and 1 or 0.45)
+        stepValue:SetAlpha(enabled and 1 or 0.45)
+
+        priceCheck:SetChecked(getBooleanSetting({ "ah", "tabPriceCheck" }, false))
+        updateCheckboxVisual(priceCheck)
+        -- the average is made of the sales history: without it there is nothing to turn on
+        local historyOn = getBooleanSetting({ "ah", "tabHistory" }, true)
+        local averageSales = math.max(5, math.min(30, math.floor(getNumberSetting({ "ah", "tabAverageSales" }, 10) + 0.5)))
+        if averageCheck.Text then
+            averageCheck.Text:SetText(string.format("%s (%d sales)", (config.averageFloor or {}).label or "", averageSales))
+        end
+        averageCheck:SetChecked(getBooleanSetting({ "ah", "tabAverageFloor" }, false))
+        if enabled and historyOn then
+            averageCheck:Enable()
+        else
+            averageCheck:Disable()
+        end
+        updateCheckboxVisual(averageCheck)
+        tooltipsCheck:SetChecked(getBooleanSetting({ "ah", "tabTooltips" }, true))
+        updateCheckboxVisual(tooltipsCheck)
+        wheelCheck:SetChecked(getBooleanSetting({ "ah", "tabWheel" }, false))
+        updateCheckboxVisual(wheelCheck)
+        shiftCheck:SetChecked(getBooleanSetting({ "ah", "tabWheelShift" }, true))
+        if enabled and wheelCheck:GetChecked() then
+            shiftCheck:Enable()
+        else
+            shiftCheck:Disable()
+        end
+        updateCheckboxVisual(shiftCheck)
+        trendCheck:SetChecked(getBooleanSetting({ "ah", "tabShowTrend" }, true))
+        updateCheckboxVisual(trendCheck)
+        valueCheck:SetChecked(getBooleanSetting({ "ah", "tabShowValue" }, true))
+        updateCheckboxVisual(valueCheck)
+        historyCheck:SetChecked(getBooleanSetting({ "ah", "tabHistory" }, true))
+        updateCheckboxVisual(historyCheck)
+
+        local salesNow = math.max(5, math.min(30, math.floor(getNumberSetting({ "ah", "tabAverageSales" }, 10) + 0.5)))
+        salesSlider.__fwrRefreshing = true
+        salesSlider:SetValue(salesNow)
+        salesSlider.__fwrRefreshing = nil
+        salesValue:SetText(string.format("%d sales", salesNow))
+        local salesUsable = enabled and getBooleanSetting({ "ah", "tabHistory" }, true)
+        salesSlider:SetEnabled(salesUsable)
+        salesTitle:SetAlpha(salesUsable and 1 or 0.45)
+        salesValue:SetAlpha(salesUsable and 1 or 0.45)
+    end
+
+    -- the tab makes its list again (posting time and price check are used at once)
+    local function changed()
+        refresh()
+        FWR:Emit("sellFiltersChanged")
+    end
+
+    enabledCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabEnabled" }, self:GetChecked() == true)
+        refresh()
+        FWR:Emit("sellTabEnabledChanged")
+    end)
+
+    for _, check in ipairs(durationChecks) do
+        check:SetScript("OnClick", function(self)
+            setNumberSetting({ "ah", "tabPostTime" }, self.value)
+            changed()
+        end)
+    end
+    salesSlider:SetScript("OnValueChanged", function(self, value)
+        if self.__fwrRefreshing then
+            return
+        end
+        local snapped = math.max(5, math.min(30, math.floor((tonumber(value) or 10) + 0.5)))
+        salesValue:SetText(string.format("%d sales", snapped))
+        setNumberSetting({ "ah", "tabAverageSales" }, snapped)
+        if averageCheck.Text then
+            averageCheck.Text:SetText(string.format("%s (%d sales)", (config.averageFloor or {}).label or "", snapped))
+        end
+        FWR:Emit("sellFiltersChanged")
+    end)
+    stepSlider:SetScript("OnValueChanged", function(self, value)
+        if self.__fwrRefreshing then
+            return
+        end
+        local snapped = math.max(1, math.min(20, math.floor((tonumber(value) or 5) + 0.5)))
+        stepValue:SetText(string.format("%d%%", snapped))
+        setNumberSetting({ "ah", "tabPriceStep" }, snapped)
+    end)
+    priceCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabPriceCheck" }, self:GetChecked() == true)
+        changed()
+    end)
+    averageCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabAverageFloor" }, self:GetChecked() == true)
+        changed()
+    end)
+    wheelCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabWheel" }, self:GetChecked() == true)
+        refresh()
+        FWR:Emit("sellTabWheelChanged")
+    end)
+    shiftCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabWheelShift" }, self:GetChecked() == true)
+        refresh()
+        FWR:Emit("sellTabWheelChanged")
+    end)
+    tooltipsCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabTooltips" }, self:GetChecked() == true)
+        refresh()
+    end)
+    trendCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabShowTrend" }, self:GetChecked() == true)
+        changed()
+    end)
+    valueCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabShowValue" }, self:GetChecked() == true)
+        changed()
+    end)
+    historyCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabHistory" }, self:GetChecked() == true)
+        refresh()
+        FWR:Emit("sellFiltersChanged")
+        FWR:Emit("sellTabHistoryChanged")
+    end)
+
+    page:SetScript("OnShow", refresh)
+    refresh()
+    return page
+end
+
+local function createSellListPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints(parent)
+
+    local config = PAGE_CONFIG.selllist or {}
+    local titles = config.sections or {}
+    local checkboxConfig = (PAGE_CONFIG.engine or {}).checkbox or {}
+
+    local function styleCheck(check, text)
+        check:SetHitRectInsets(0, 0, 0, 0)
+        if check.Text then
+            check.Text:ClearAllPoints()
+            check.Text:SetPoint("LEFT", check, "RIGHT", checkboxConfig.textOffsetX or 0, checkboxConfig.textOffsetY or 1)
+            check.Text:SetJustifyH("LEFT")
+            check.Text:SetText(text or "")
+        end
+    end
+
+    local sourceLine = createSection(page, titles.source or "Source")
+    local note = createNote(page, config.note or "", sourceLine, 0, 6)
+
+    local farmedCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+    farmedCheck:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -GAP_AFTER_NOTE)
+    styleCheck(farmedCheck, (config.onlyFarmed or {}).label)
+    attachTooltip(farmedCheck, (config.onlyFarmed or {}).label, (config.onlyFarmed or {}).tooltip)
+
+    local groupsLine = createSection(page, titles.groups or "Groups shown in the list", farmedCheck)
+
+    local groups = {
+        { key = "trade", setting = "tabShowTrade" },
+        { key = "consumables", setting = "tabShowConsumables" },
+        { key = "gems", setting = "tabShowGems" },
+        { key = "other", setting = "tabShowOther" },
+    }
+    local previous = groupsLine
+    for index, group in ipairs(groups) do
+        local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+        check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, index == 1 and -GAP_AFTER_LINE or -GAP_NEXT_CHECK)
+        styleCheck(check, (config[group.key] or {}).label)
+        attachTooltip(check, (config[group.key] or {}).label, (config[group.key] or {}).tooltip)
+        group.check = check
+        previous = check
+    end
+
+    local function refresh()
+        farmedCheck:SetChecked(getBooleanSetting({ "ah", "tabOnlyFarmed" }, false))
+        updateCheckboxVisual(farmedCheck)
+        for _, group in ipairs(groups) do
+            group.check:SetChecked(getBooleanSetting({ "ah", group.setting }, true))
+            updateCheckboxVisual(group.check)
+        end
+    end
+
+    -- the tab makes its list again at once
+    local function changed()
+        refresh()
+        FWR:Emit("sellFiltersChanged")
+    end
+
+    farmedCheck:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabOnlyFarmed" }, self:GetChecked() == true)
+        changed()
+    end)
+    for _, group in ipairs(groups) do
+        group.check:SetScript("OnClick", function(self)
+            setBooleanSetting({ "ah", group.setting }, self:GetChecked() == true)
+            changed()
+        end)
+    end
+
+    page:SetScript("OnShow", refresh)
+    refresh()
+    return page
+end
+
 local function createInfoPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints(parent)
@@ -1412,13 +1918,10 @@ local function createInfoPage(parent)
     local titleConfig = infoConfig.title or {}
     local bodyConfig = infoConfig.body or {}
 
-    local title = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", titleConfig.x or 0, titleConfig.y or -2)
-    title:SetTextColor(1, 1, 1, 1)
-    title:SetText(titleConfig.text or "Quick Commands")
+    local title = createSection(page, titleConfig.text or "Quick commands")
 
     local body = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", bodyConfig.x or 0, bodyConfig.y or -10)
+    body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", bodyConfig.x or 0, -GAP_AFTER_NOTE)
     body:SetPoint("RIGHT", page, "RIGHT", -(bodyConfig.rightInset or 18), 0)
     body:SetJustifyH("LEFT")
     body:SetJustifyV("TOP")
@@ -1433,15 +1936,11 @@ local function createDataPage(parent)
 
     local eraseConfig = (PAGE_CONFIG.data or {}).erase or {}
 
-    local eraseNote = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    eraseNote:SetPoint("TOPLEFT", eraseConfig.noteX or 0, eraseConfig.noteY or -2)
-    eraseNote:SetPoint("RIGHT", page, "RIGHT", -18, 0)
-    eraseNote:SetJustifyH("LEFT")
-    eraseNote:SetJustifyV("TOP")
-    eraseNote:SetText(eraseConfig.note or "")
+    local eraseSection = createSection(page, "Erase data")
+    local eraseNote = createNote(page, eraseConfig.note or "", eraseSection, 0, 8)
 
     local eraseLabel = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    eraseLabel:SetPoint("TOPLEFT", eraseNote, "BOTTOMLEFT", 0, eraseConfig.labelOffsetY or -16)
+    eraseLabel:SetPoint("TOPLEFT", eraseNote, "BOTTOMLEFT", 0, -GAP_AFTER_NOTE - 6)
     eraseLabel:SetTextColor(1, 1, 1, 1)
     eraseLabel:SetText(eraseConfig.label or "Erase Data")
 
@@ -1493,6 +1992,17 @@ local function selectCategory(frame, categoryKey)
     end
     if frame.subtitle then
         frame.subtitle:SetText(CATEGORY_NOTES[categoryKey] or "")
+    end
+
+    -- the manual always opens on its list of chapters
+    if categoryKey == "manual" then
+        local scroll = frame.Pages and frame.Pages.manual
+        if scroll and scroll.Page and scroll.Page.ShowHome then
+            scroll.Page:ShowHome()
+        end
+    end
+    if frame.UpdateBackButton then
+        frame:UpdateBackButton()
     end
 end
 
@@ -1598,6 +2108,22 @@ local function buildWindow()
         frame:Hide()
     end)
 
+    -- "Back": next to Close, only while a chapter of the manual is open
+    frame.backButton = CreateFrame("Button", nil, frame.footer, "UIPanelButtonTemplate")
+    frame.backButton:SetSize(84, 24)
+    frame.backButton:SetPoint("RIGHT", frame.closeButton, "LEFT", -8, 0)
+    frame.backButton:SetText("Back")
+    frame.backButton:Hide()
+    frame.backButton:SetScript("OnClick", function()
+        local scroll = frame.Pages and frame.Pages.manual
+        if scroll and scroll.Page and scroll.Page.ShowHome then
+            scroll.Page:ShowHome()
+        end
+    end)
+    function frame:UpdateBackButton()
+        self.backButton:SetShown(self.SelectedCategoryKey == "manual" and self.ManualChapter ~= nil)
+    end
+
     frame.footerNote = frame.footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.footerNote:SetPoint("LEFT", frame.footer, "LEFT", (FOOTER_CONFIG.note and FOOTER_CONFIG.note.x) or 18, (FOOTER_CONFIG.note and FOOTER_CONFIG.note.y) or 0)
     frame.footerNote:SetPoint("RIGHT", frame.closeButton, "LEFT", -12, 0)
@@ -1629,13 +2155,18 @@ local function buildWindow()
         previousButton = button
     end
 
-    frame.Pages.interface = createInterfacePage(frame.contentInset, frame)
+    frame.Pages.interface = createScrollPage(frame.contentInset, createInterfacePage, frame)
     frame.Pages.display = createDisplayPage(frame.contentInset, frame)
-    frame.Pages.tracking = createTrackingPage(frame.contentInset)
-    frame.Pages.engine = createEnginePage(frame.contentInset)
-    frame.Pages.auction = createAuctionPage(frame.contentInset)
-    frame.Pages.data = createDataPage(frame.contentInset)
-    frame.Pages.info = createInfoPage(frame.contentInset)
+    frame.Pages.tracking = createScrollPage(frame.contentInset, createTrackingPage)
+    frame.Pages.engine = createScrollPage(frame.contentInset, createEnginePage)
+    frame.Pages.auction = createScrollPage(frame.contentInset, createAuctionPage)
+    frame.Pages.selltab = createScrollPage(frame.contentInset, createSellTabPage)
+    frame.Pages.selllist = createScrollPage(frame.contentInset, createSellListPage)
+    frame.Pages.data = createScrollPage(frame.contentInset, createDataPage)
+    frame.Pages.info = createScrollPage(frame.contentInset, createInfoPage)
+    if FWR.CreateManualPage then
+        frame.Pages.manual = createScrollPage(frame.contentInset, FWR.CreateManualPage, frame)
+    end
 
     selectCategory(frame, "interface")
 

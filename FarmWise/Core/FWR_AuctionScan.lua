@@ -4,11 +4,24 @@ FarmWiseReforged = FWR
 -- Auction House scan.
 -- Reads the lowest price of every trade good (or of every item, when the whole-Auction-House option
 -- is on) straight from the Auction House and stores it in FarmWiseDB._ah, which the Advisor
--- uses for gold per hour. It runs automatically when the Auction House opens and the last scan
--- is older than the update interval chosen in the Auction House settings.
+-- uses for gold per hour. It runs automatically when the Auction House opens (and while it stays open)
+-- if the "Scan automatically" option is on and the last scan is older than the interval chosen in the
+-- options, and never sooner than MIN_SECONDS_BETWEEN_SCANS (15 minutes) after the previous one.
+-- The AH Tab does not depend on it: the tab asks the Auction House for its own prices as it goes.
 
 local PREFIX = "|cffd7be6aFarmWise|r "
-local TRADEGOODS_CLASS_ID = (Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods) or 7
+local ITEM_CLASS = (Enum and Enum.ItemClass) or {}
+local TRADEGOODS_CLASS_ID = ITEM_CLASS.Tradegoods or 7
+
+-- The scan levels. Trade materials are always read. "Commodities" adds the other things that are sold by
+-- amount (one query for each class, one after the other); "full" reads the whole Auction House in one query.
+local COMMODITY_CLASS_IDS = {
+    TRADEGOODS_CLASS_ID,
+    ITEM_CLASS.Consumable or 0,
+    ITEM_CLASS.Gem or 3,
+    ITEM_CLASS.ItemEnhancement or 8,
+    ITEM_CLASS.Reagent or 5,
+}
 
 local START_DELAY_SECONDS = 0.5
 local MIN_SECONDS_BETWEEN_SCANS = 15 * 60
@@ -29,7 +42,10 @@ local scan = {
     startedAt = 0,
     activity = 0,        -- grows with every sign of life; the watchdog compares against it
     attempt = 1,         -- the query is sent at most twice
-    gotResults = false,  -- real trade material results arrived
+    gotResults = false,  -- real results of our query arrived
+    classes = nil,       -- the item classes this scan reads one after the other (nil: the whole Auction House)
+    classIndex = 1,      -- the class being read now
+    collected = {},      -- what the classes read before this one gave
 }
 
 local function say(message)
@@ -71,6 +87,12 @@ end
 function FWR:GetAuctionScanCooldownSeconds()
     local age = self:GetAuctionSyncAgeSeconds()
     if not age then
+        return 0
+    end
+    -- a different scan level than the one that made the prices: the prices are not what is wanted now
+    local settings = getSettings(self)
+    local level = settings.fullScan == true and "full" or (settings.scanCommodities ~= false and "commodities" or "trade")
+    if (self:GetAuctionDataStore().lastScanLevel or "trade") ~= level then
         return 0
     end
     return math.max(0, MIN_SECONDS_BETWEEN_SCANS - age)
@@ -135,9 +157,38 @@ function FWR:GetAuctionSyncAgeText()
     return text, 1, 0.3, 0.3
 end
 
-local function isFullScan(self)
-    return getSettings(self).fullScan == true
+-- Whether a scan is running, how far it is (0-99, or nil when the size is not known yet, the first scan)
+-- and how many items it has found so far.
+function FWR:GetAuctionScanProgress()
+    if not scan.running then
+        return false, nil, 0
+    end
+    if scan.expected > 0 then
+        return true, math.min(99, math.floor((scan.found / scan.expected) * 100)), scan.found
+    end
+    return true, nil, scan.found
 end
+
+function FWR:GetAuctionScanMinimumMinutes()
+    return math.floor(MIN_SECONDS_BETWEEN_SCANS / 60)
+end
+
+-- "trade", "commodities" or "full"
+local function scanLevel(self)
+    local settings = getSettings(self)
+    if settings.fullScan == true then
+        return "full"
+    elseif settings.scanCommodities ~= false then
+        return "commodities"
+    end
+    return "trade"
+end
+
+local LEVEL_TEXT = {
+    trade = "trade materials only",
+    commodities = "trade materials and everything sold by amount",
+    full = "whole Auction House",
+}
 
 -- All trade materials of every expansion, or everything when the whole-Auction-House option is on.
 -- The game returns nothing when the "current expansion" filter is combined with an item class, so
@@ -149,15 +200,48 @@ local function buildQuery(self)
         searchString = "",
         sorts = { { sortOrder = sortOrder, reverseSort = false } },
         filters = {},
-        itemClassFilters = (not isFullScan(self)) and { { classID = TRADEGOODS_CLASS_ID } } or nil,
+        itemClassFilters = scan.classes and { { classID = scan.classes[scan.classIndex] } } or nil,
         separateOwnerItems = false,
     }
 end
 
-local function refreshPanels(self)
-    if self.RefreshAdvisorPanel then
-        self:RefreshAdvisorPanel()
+-- The Advisor works out all its places and items again when it is refreshed, which is a lot of work while a scan
+-- sends a new batch every fraction of a second. While a scan runs it is refreshed at most once a second; the
+-- last state is always shown (a refresh is kept for the end of the pause).
+local ADVISOR_REFRESH_SECONDS = 1
+local advisorRefreshedAt = -100
+local advisorRefreshWaiting = false
+
+local function refreshAdvisorThrottled(self)
+    if not self.RefreshAdvisorPanel then
+        return
     end
+
+    local waited = GetTime() - advisorRefreshedAt
+    if not scan.running or waited >= ADVISOR_REFRESH_SECONDS then
+        advisorRefreshedAt = GetTime()
+        self:RefreshAdvisorPanel()
+        return
+    end
+
+    if not advisorRefreshWaiting then
+        advisorRefreshWaiting = true
+        C_Timer.After(ADVISOR_REFRESH_SECONDS - waited, function()
+            advisorRefreshWaiting = false
+            advisorRefreshedAt = GetTime()
+            if FWR.RefreshAdvisorPanel then
+                FWR:RefreshAdvisorPanel()
+            end
+        end)
+    end
+end
+
+local function refreshPanels(self)
+    -- other parts (the Auction House tab) follow the scan through this one announcement
+    if self.Emit then
+        self:Emit("auctionScanChanged")
+    end
+    refreshAdvisorThrottled(self)
     if self.RefreshMainWindowText then
         self:RefreshMainWindowText()
     end
@@ -170,24 +254,27 @@ local function abortScan(self, message)
     refreshPanels(self)
 end
 
--- The game also sends its own queries when the Auction House opens. For the normal scan only a list
--- made purely of trade materials can be the answer to our query; anything else is ignored.
+-- The game also sends its own queries when the Auction House opens. Unless the whole Auction House is read,
+-- only a list made purely of the class we asked for can be the answer to our query; anything else is ignored.
 local function isExpectedList(self, results)
     if #results == 0 then
-        return false
+        -- a later class with nothing for sale is a real answer (the first class never is empty)
+        return scan.classes ~= nil and scan.classIndex > 1 and #scan.collected > 0
+            and C_AuctionHouse.HasFullBrowseResults() == true
     end
 
-    if isFullScan(self) then
+    if not scan.classes then
         return true
     end
 
+    local wanted = scan.classes[scan.classIndex]
     for _, result in ipairs(results) do
         local itemID = result.itemKey and result.itemKey.itemID
         if not itemID then
             return false
         end
         local classID = select(6, GetItemInfoInstant(itemID))
-        if classID ~= TRADEGOODS_CLASS_ID then
+        if classID ~= wanted then
             return false
         end
     end
@@ -195,6 +282,7 @@ local function isExpectedList(self, results)
 end
 
 local sendQuery
+local sendNextClassQuery
 
 -- Watchdog: every sign of life re-arms it. If nothing happens in time the whole scan is started again
 -- (another addon may have replaced the query, or the game was busy), up to MAX_ATTEMPTS times, and
@@ -213,6 +301,15 @@ local function watch(self, seconds)
             sendQuery(FWR)
         elseif scan.gotResults then
             abortScan(FWR, string.format("The Auction House stopped answering after %d items. Prices were not updated (/fw scan to try again).", scan.found))
+        elseif scan.classes and scan.classIndex > 1 and #scan.collected > 0 then
+            -- this class never answered: there is nothing of it for sale; go on with what the others gave
+            if scan.classIndex < #scan.classes then
+                scan.classIndex = scan.classIndex + 1
+                scan.attempt = 1
+                sendNextClassQuery(FWR, 1)
+            else
+                FWR:FinishAuctionScanFromCollected()
+            end
         else
             abortScan(FWR, "The Auction House returned no items. Try again in a moment (/fw scan).")
         end
@@ -257,9 +354,23 @@ local function startNow(self)
     scan.expected = tonumber(self:GetAuctionDataStore().lastSyncCount) or 0
     scan.startedAt = GetTime()
     scan.attempt = 1
+    scan.collected = {}
+    scan.classIndex = 1
+    local level = scanLevel(self)
+    if level == "full" then
+        scan.classes = nil
+    elseif level == "commodities" then
+        scan.classes = COMMODITY_CLASS_IDS
+    else
+        scan.classes = { TRADEGOODS_CLASS_ID }
+    end
+    -- the size of the last scan only helps when it was a scan of this level
+    if self:GetAuctionDataStore().lastScanLevel ~= level then
+        scan.expected = 0
+    end
 
     if sendQuery(self) then
-        say("Auction House scan started (" .. (isFullScan(self) and "whole Auction House" or "trade materials only") .. "). Keep the Auction House open until it finishes. " .. self:GetAuctionScanEstimateText())
+        say("Auction House scan started (" .. LEVEL_TEXT[level] .. "). Keep the Auction House open until it finishes. " .. self:GetAuctionScanEstimateText())
         refreshPanels(self)
     end
 end
@@ -336,12 +447,37 @@ local function finishScan(self, results)
     store.lastSyncTime = now
     store.lastSyncCount = priced
     store.lastScanSeconds = seconds
+    store.lastScanLevel = scanLevel(self)
 
     scan.running = false
+    if self.Emit then
+        self:Emit("auctionScanFinished", items, now)
+    end
     say(string.format("Auction House scan complete: %d items priced in %d seconds.", priced, seconds))
 
     playFinishedSound(getSettings(self))
     refreshPanels(self)
+end
+
+sendNextClassQuery = function(self, tries)
+    if not scan.running then
+        return
+    end
+    if C_AuctionHouse.IsThrottledMessageSystemReady and not C_AuctionHouse.IsThrottledMessageSystemReady()
+        and tries < MORE_RESULTS_RETRY_LIMIT then
+        watch(self, BATCH_TIMEOUT_SECONDS)
+        C_Timer.After(MORE_RESULTS_RETRY_SECONDS, function()
+            sendNextClassQuery(FWR, tries + 1)
+        end)
+        return
+    end
+    sendQuery(self)
+end
+
+function FWR:FinishAuctionScanFromCollected()
+    if scan.running then
+        finishScan(self or FWR, scan.collected)
+    end
 end
 
 local function handleBrowseResults(self)
@@ -355,10 +491,23 @@ local function handleBrowseResults(self)
     end
 
     scan.gotResults = true
-    scan.found = #results
+    scan.found = #scan.collected + #results
 
     if C_AuctionHouse.HasFullBrowseResults() then
-        finishScan(self, results)
+        for _, result in ipairs(results) do
+            scan.collected[#scan.collected + 1] = result
+        end
+
+        -- another class to read: ask for it (the game accepts the next query only when it says it is ready)
+        if scan.classes and scan.classIndex < #scan.classes then
+            scan.classIndex = scan.classIndex + 1
+            scan.attempt = 1
+            sendNextClassQuery(self, 1)
+            refreshPanels(self)
+            return
+        end
+
+        finishScan(self, scan.collected)
         return
     end
 
@@ -367,20 +516,45 @@ local function handleBrowseResults(self)
     refreshPanels(self)
 end
 
+-- The options of the Scanner page decide: a scan is due when "Scan automatically" is on and the prices are
+-- older than the chosen interval (or there never was one). The AH Tab has nothing to do with it.
 local function autoScanIsDue(self)
-    local settings = getSettings(self)
-    if settings.autoScan == false then
+    if getSettings(self).autoScan == false then
         return false
     end
-
     local age = self:GetAuctionSyncAgeSeconds()
     return self:GetAuctionScanCooldownSeconds() == 0 and (age == nil or age >= self:GetAuctionFreshnessMinutes() * 60)
+end
+
+-- While the Auction House stays open the prices get old: as soon as they are older than the chosen interval
+-- a new scan starts by itself, without waiting for the window to be opened again. Looked at
+-- every few seconds; after an attempt that did not get to scan there is a pause before the next one.
+local AUTO_CHECK_SECONDS = 5
+local AUTO_RETRY_SECONDS = 30
+local autoTicker
+local lastAutoAttempt = -AUTO_RETRY_SECONDS
+
+local function startAutoCheck()
+    if autoTicker then
+        return
+    end
+    autoTicker = C_Timer.NewTicker(AUTO_CHECK_SECONDS, function()
+        if not auctionHouseOpen or scan.running or scan.pendingStart or not autoScanIsDue(FWR) then
+            return
+        end
+        if GetTime() - lastAutoAttempt < AUTO_RETRY_SECONDS then
+            return
+        end
+        lastAutoAttempt = GetTime()
+        FWR:StartAuctionScan()
+    end)
 end
 
 -- Single entry point for every Auction House event; the main file decides when it is called.
 function FWR:HandleAuctionHouseEvent(event)
     if event == "AUCTION_HOUSE_SHOW" then
         auctionHouseOpen = true
+        startAutoCheck()
         if autoScanIsDue(self) then
             C_Timer.After(START_DELAY_SECONDS, function()
                 if auctionHouseOpen and not scan.running then

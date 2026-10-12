@@ -26,32 +26,54 @@ local function formatPrice(copper)
     return string.format("%d%s", rest, COPPER_ICON)
 end
 
--- an item's class never changes, so it is asked of the game once
-local materialCache = {}
+-- Which kinds of item the last scan can have read: trade materials always, the other things sold by amount
+-- when that level of the scan is on, and everything when the whole Auction House is scanned.
+local ITEM_CLASS = (Enum and Enum.ItemClass) or {}
+local COMMODITY_CLASSES = {
+    [ITEM_CLASS.Consumable or 0] = true,
+    [ITEM_CLASS.Gem or 3] = true,
+    [ITEM_CLASS.Reagent or 5] = true,
+    [ITEM_CLASS.Tradegoods or 7] = true,
+    [ITEM_CLASS.ItemEnhancement or 8] = true,
+}
+local TRADEGOODS = ITEM_CLASS.Tradegoods or 7
 
--- Lowest Auction House price of one item from the last scan, or nil. Without the whole-Auction-House
--- option (or when materialsOnly is true) only trade materials have a price, so an old full scan never
--- leaves a stale price on another kind of item.
+-- an item's class never changes, so it is asked of the game once
+local classCache = {}
+
+-- Lowest Auction House price of one item from the last scan, or nil. Only the kinds of item the scan level
+-- covers have a price, so an old bigger scan never leaves a stale price on another kind of item.
+-- materialsOnly: true = trade materials only (what the Advisor counts); "commodities" = the things sold by
+-- amount that the scan level covers (what the AH Tab lists), also when the whole Auction House was scanned,
+-- because gear is not the business of the tab.
 function FWR:GetAuctionPrice(itemID, materialsOnly)
     local settings = self.Settings and self.Settings.ah
     if not itemID then
         return nil
     end
+    settings = type(settings) == "table" and settings or {}
 
-
-    if materialsOnly or not (type(settings) == "table" and settings.fullScan == true) then
-        local isMaterial = materialCache[itemID]
-        if isMaterial == nil then
-            local classID = select(6, GetItemInfoInstant(itemID))
-            if classID == nil then
-                return nil
-            end
-            isMaterial = classID == ((Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods) or 7)
-            materialCache[itemID] = isMaterial
-        end
-        if not isMaterial then
+    local classID = classCache[itemID]
+    if classID == nil then
+        classID = select(6, GetItemInfoInstant(itemID))
+        if classID == nil then
             return nil
         end
+        classCache[itemID] = classID
+    end
+
+    local covered
+    if materialsOnly == true then
+        covered = classID == TRADEGOODS
+    elseif settings.fullScan == true and not materialsOnly then
+        covered = true
+    elseif settings.fullScan == true or settings.scanCommodities ~= false then
+        covered = COMMODITY_CLASSES[classID] == true
+    else
+        covered = classID == TRADEGOODS
+    end
+    if not covered then
+        return nil
     end
 
     local store = FarmWiseDB and FarmWiseDB._ah
@@ -63,6 +85,27 @@ function FWR:GetAuctionPrice(itemID, materialsOnly)
     return nil
 end
 
+-- the tooltip of an item the AH Tab leaves out because a vendor pays more than the Auction House
+local function addVendorInfo(tooltip, itemID)
+    if FWR.GetSellTabSettings and not FWR:GetSellTabSettings().enabled then
+        return
+    end
+    if not FWR.GetVendorBetterInfo then
+        return
+    end
+    local vendor, auction = FWR:GetVendorBetterInfo(itemID)
+    if not vendor then
+        return
+    end
+
+    tooltip:AddLine(" ")
+    tooltip:AddLine("FarmWise Info", 0.95, 0.82, 0.42)
+    tooltip:AddLine("Not listed in the AH Tab:", 1, 1, 1, false)
+    tooltip:AddLine("a vendor pays more than the Auction House", 1, 1, 1, false)
+    tooltip:AddDoubleLine("Vendor", formatPrice(vendor), 0.8, 0.8, 0.8, 1, 1, 1)
+    tooltip:AddDoubleLine("Auction House (after the 5% cut)", formatPrice(auction), 0.8, 0.8, 0.8, 1, 1, 1)
+end
+
 local function addPriceLine(tooltip, data)
     local itemID = type(data) == "table" and tonumber(data.id) or nil
     if not itemID then
@@ -70,14 +113,16 @@ local function addPriceLine(tooltip, data)
     end
 
     local settings = FWR.Settings and FWR.Settings.ah
-    if type(settings) == "table" and settings.tooltipPrice == false then
-        return
+    local showPrice = not (type(settings) == "table" and settings.tooltipPrice == false)
+
+    if showPrice then
+        local price = FWR:GetAuctionPrice(itemID)
+        if price then
+            tooltip:AddDoubleLine(LABEL, formatPrice(price), 1, 1, 1, 1, 1, 1)
+        end
     end
 
-    local price = FWR:GetAuctionPrice(itemID)
-    if price then
-        tooltip:AddDoubleLine(LABEL, formatPrice(price), 1, 1, 1, 1, 1, 1)
-    end
+    addVendorInfo(tooltip, itemID)
 end
 
 if type(TooltipDataProcessor) == "table" and type(TooltipDataProcessor.AddTooltipPostCall) == "function"
