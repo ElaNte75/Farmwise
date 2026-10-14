@@ -47,6 +47,13 @@ local ICON_SIZE = 14
 local ICON_X = 6
 local NAME_X = 24   -- icon, then 4 pixels, like the game's own lists
 local NAME_GAP = 6
+
+-- The item column is the same in the Sell, Actions and History pages, and it never changes its size: a long name
+-- is cut with "..." and the mark of the quality has a place of its own at the end of the column, so it is
+-- always seen. The other pages read these numbers from FWR.ITEM_COLUMN.
+local ITEM_WIDTH, TIER_W, TIER_H, TIER_GAP = 216, 14, 12, 3
+FWR.ITEM_COLUMN = { x = NAME_X, width = ITEM_WIDTH, tierWidth = TIER_W, tierHeight = TIER_H, tierGap = TIER_GAP }
+local MARK_WIDTH = 14   -- one "!" after the name (it takes room from the name)
 local NUMBER_FONT = "Number13FontWhite"   -- numbers: a little smaller than the names (14)
 local TITLE_FONT = "GameFontHighlightSmall"
 
@@ -96,12 +103,20 @@ local COIN_GAP, PART_GAP = 3, 3
 local COLUMN = {}
 local SEPARATORS = {}
 
-local function computeLayout()
+local function computeLayout(auctionHouseFrame)
     TAB_SETTINGS = FWR.GetSellTabSettings and FWR:GetSellTabSettings() or TAB_SETTINGS
 
-    -- the item name column: 200 pixels hold most names; the longest trade material names (about 217) and the
-    -- "!" make it grow, for good, the first time they are seen
-    NAME_WIDTH = math.max(200, savedWidth("nameWidth"))
+    -- The item name column has one size, the same in the three pages. It is the size the History page has always
+    -- had: what the page leaves to the item after the columns that stand at its right edge (they have a fixed
+    -- width, see the History page). Worked out once from the width of the Auction House window.
+    local itemWidth = ITEM_WIDTH
+    local windowWidth = auctionHouseFrame and auctionHouseFrame.GetWidth and tonumber(auctionHouseFrame:GetWidth())
+    if windowWidth and windowWidth > 0 and FWR.HISTORY_RIGHT_WIDTH then
+        local listWidth = windowWidth - 4 - 5 - 2 * PANEL_PADDING
+        itemWidth = math.max(120, math.floor(listWidth - FWR.HISTORY_RIGHT_WIDTH - NAME_X))
+    end
+    FWR.ITEM_COLUMN.width = itemWidth
+    NAME_WIDTH = itemWidth
 
     -- The price: gold (up to six digits, growing to the left) and silver (two digits), each in a place of its
     -- own, so the numbers of all the rows stand in columns. Prices of the Auction House are in whole silver, so
@@ -266,7 +281,9 @@ local function scanBags()
         for slot = 1, slots do
             local info = C_Container.GetContainerItemInfo(bag, slot)
             local itemID = info and tonumber(info.itemID)
-            if itemID and not info.isBound and not info.isLocked and (not farmed or farmed[itemID]) then
+            -- grey (poor quality) items are never part of the list: a vendor takes them
+            if itemID and tonumber(info.quality) ~= 0 and not info.isBound and not info.isLocked
+                and (not farmed or farmed[itemID]) then
                 local record = found[itemID]
                 if record then
                     record.owned = record.owned + (tonumber(info.stackCount) or 1)
@@ -758,11 +775,6 @@ end
 -- What a row needs from the columns: if a column is too narrow for it, it will be wider from the next time on.
 -- Returns the widths the name and the number in the bags need now, so that it is written in full meanwhile.
 local function needWidths(entry, marks, shownName)
-    local nameNeed = textWidth("Number14FontWhite", tostring(shownName or entry.name)) + (marks or 0) * 18 + 2
-    if nameNeed > NAME_WIDTH then
-        rememberWidth("nameWidth", nameNeed)
-    end
-
     local ownedNeed = textWidth(NUMBER_FONT, tostring(entry.owned)) + 10
     if ownedNeed > OWNED_WIDTH then
         rememberWidth("ownedWidth", ownedNeed)
@@ -773,7 +785,7 @@ local function needWidths(entry, marks, shownName)
         rememberWidth("amountWidth", amountNeed)
     end
 
-    return nameNeed, ownedNeed
+    return ownedNeed
 end
 
 local function setQuantity(entry, quantity)
@@ -1204,9 +1216,15 @@ local function createRow(index)
     row.problem:SetText("!")
     row.problem:SetTextColor(1, 0.2, 0.2)
     row.problem:Hide()
-    row.name:SetWidth(NAME_WIDTH)
+    row.name:SetWidth(NAME_WIDTH - TIER_W - TIER_GAP)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
+
+    -- the mark of the quality: a place of its own at the end of the item column
+    row.tier = row:CreateTexture(nil, "OVERLAY")
+    row.tier:SetSize(TIER_W, TIER_H)
+    row.tier:SetPoint("LEFT", row, "LEFT", NAME_X + NAME_WIDTH - TIER_W, 0)
+    row.tier:Hide()
 
     local function place(region, column, yOffset, xOffset)
         region:ClearAllPoints()
@@ -1520,28 +1538,35 @@ refreshRows = function()
                     entry.problem = "average"
                 end
             end
-            -- the name, and after it the game's own indicator of the quality (as in the game's own lists)
+            -- the name (cut with "..." when it is long), and at the end of the column the game's own indicator
+            -- of the quality (as in the game's own lists), which is always seen
             local tier = FWR.GetItemQualityTier and FWR:GetItemQualityTier(entry.itemID)
-            local shownName = tostring(entry.name)
+            local tierShown = false
             if tier then
-                shownName = shownName .. string.format(" |A:Professions-ChatIcon-Quality-12-Tier%d:15:17:1:0|a", tier)
+                tierShown = pcall(function()
+                    row.tier:SetAtlas(string.format("Professions-ChatIcon-Quality-12-Tier%d", tier))
+                end)
             end
-            row.name:SetText(shownName)
-            local nameNeed, ownedNeed = needWidths(entry, (filtered and 1 or 0) + (problem and 1 or 0), shownName)
-            row.name:SetWidth(math.max(NAME_WIDTH, nameNeed))
+            row.tier:SetShown(tierShown)
+            local marks = (filtered and 1 or 0) + (problem and 1 or 0)
+            local nameRoom = NAME_WIDTH - TIER_W - TIER_GAP - marks * MARK_WIDTH
+            row.name:SetWidth(nameRoom)
+            row.name:SetText(tostring(entry.name))
+            local ownedNeed = needWidths(entry, marks)
             row.owned:SetWidth(math.max(OWNED_WIDTH, ownedNeed))
-            local markX = math.min(row.name:GetStringWidth(), row.name:GetWidth()) + 10
+            -- the "!" marks stand right before the quality mark (they take their room from the name)
+            local markX = NAME_X + nameRoom + 2
             if filtered then
                 row.mark:ClearAllPoints()
-                row.mark:SetPoint("LEFT", row.name, "LEFT", markX, 0)
+                row.mark:SetPoint("LEFT", row, "LEFT", markX, -1)
                 row.mark:Show()
-                markX = markX + 14
+                markX = markX + MARK_WIDTH
             else
                 row.mark:Hide()
             end
             if problem then
                 row.problem:ClearAllPoints()
-                row.problem:SetPoint("LEFT", row.name, "LEFT", markX, 0)
+                row.problem:SetPoint("LEFT", row, "LEFT", markX, -1)
                 row.problem:Show()
             else
                 row.problem:Hide()
@@ -1984,7 +2009,7 @@ local function install()
     end
     installed = true
 
-    computeLayout()
+    computeLayout(frame)
     buildPage(frame)
 
     -- what other parts (the History page) need to know to sit on this page in the same way

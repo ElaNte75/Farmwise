@@ -334,6 +334,8 @@ local function countUnit(unit)
             table.remove(entry.recent, 1)
         end
         trace(string.format("SALE %s x%d gross=%d cut=%d -> %s", unit.name, unit.count, unit.gross, unit.cut, key))
+        -- the Actions page clears its line when the gold is taken
+        FWR:Emit("auctionUnitCollected", { kind = "sale", itemID = itemID, name = unit.name, count = unit.count })
         return true
     elseif unit.itemID then
         noteName(unit.itemID, unit.name)
@@ -347,6 +349,7 @@ local function countUnit(unit)
             entry.cancelled = entry.cancelled + unit.count
         end
         trace(string.format("%s %s x%d", string.upper(unit.kind), tostring(unit.name), unit.count))
+        FWR:Emit("auctionUnitCollected", { kind = unit.kind, itemID = unit.itemID, name = unit.name, count = unit.count })
         return true
     end
     return false

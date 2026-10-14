@@ -3,9 +3,13 @@
 Version numbers are `major.minor.week`: the last number is the week of the year of the update, the middle
 one grows when settings or behaviour change.
 
-## 4.1.42 beta
+## 4.1.42
 
 **New**
+- Auction House tab, page "Actions" (between Sell and History): one line for each of your posts - active (with the
+  time it has left), sold, expired or cancelled - until you take the gold or the items from the mailbox. A
+  button takes an active post back (it asks first). The columns stand where those of the History page stand.
+- History: the names have the colour of their rarity.
 - Lock button for the main window, with an optional auto-lock after a minute without moving
   (Options > Interface).
 - Minimize button: the window turns into a small "FarmWise" button on one of its corners (or its center),
@@ -45,6 +49,11 @@ one grows when settings or behaviour change.
   at that average. It needs at least 3 sales and 20 pieces in the History.
 
 **Improved**
+- The item column is the same in the Sell, Actions and History pages, and never changes size: a long name is cut
+  with "..." and the quality mark is always seen (it has its own place at the end of the column, a little smaller).
+- History: the numbers of Sold, Returned and Success end on the same line (units under units).
+- Sell tab: grey items are never listed; the right-click menu of an item that is left out can change how many to
+  keep in the bags.
 - Much lower CPU use: the window is redrawn only when something changed, bursts of loot are drawn once, and
   a hidden window does no work.
 - Zone name starts exactly where "Total:" starts. Smaller IDLE text.
@@ -57,6 +66,10 @@ one grows when settings or behaviour change.
   how many times you used it, what you got in total and per use, and the price of each result. These results are
   no longer listed as "best place" items, since a place does not matter for them.
 - Explanations (tooltips) for the new options.
+
+**Fixed**
+- Errors after the game update that removed older game functions (item and spell information): they are now
+  found where the game keeps them.
 
 ## 4.0.0 beta
 

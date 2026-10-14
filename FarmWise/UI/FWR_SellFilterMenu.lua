@@ -64,22 +64,21 @@ function FWR:OpenSellFilterMenu(owner, entry)
         local quality = FWR.GetItemQualityLabel and FWR:GetItemQualityLabel(itemID)
         root:CreateTitle(tostring(entry.name or itemID) .. (quality and ("  " .. quality) or ""))
 
-        -- in the list of the items that are left out there is only one thing to do: show it again
-        if entry.leftOut then
-            if entry.leftOut == "vendor" then
-                root:CreateTitle("A vendor pays more for it than the Auction House")
-            else
-                root:CreateButton("Show in the list", function()
-                    FWR:SetSellFilter(itemID, false, 0)
-                end)
-            end
-            return
+        -- items that are left out: show it again (when hidden) and what to keep in the bags; nothing about prices
+        local leftOut = entry.leftOut
+        if leftOut == "vendor" then
+            root:CreateTitle("A vendor pays more for it than the Auction House")
+        elseif leftOut == "hidden" then
+            root:CreateButton("Show in the list", function()
+                local _, keep = FWR:GetSellFilter(itemID)
+                FWR:SetSellFilter(itemID, false, keep)
+            end)
+        else
+            root:CreateButton("Hide from the list", function()
+                local _, keep = FWR:GetSellFilter(itemID)
+                FWR:SetSellFilter(itemID, true, keep)
+            end)
         end
-
-        root:CreateButton("Hide from the list", function()
-            local _, keep = FWR:GetSellFilter(itemID)
-            FWR:SetSellFilter(itemID, true, keep)
-        end)
 
         local keepMenu = root:CreateButton("Keep in my bags")
         local function addKeepChoice(label, value)
@@ -101,6 +100,10 @@ function FWR:OpenSellFilterMenu(owner, entry)
                 StaticPopup_Show(POPUP_KEY, tostring(entry.name or itemID), nil, { itemID = itemID, hide = hide, keep = keep })
             end
         end)
+
+        if leftOut then
+            return
+        end
 
         -- the posting time of this item, with what the deposit would be for each
         local override = FWR:GetItemDurationOverride(itemID)

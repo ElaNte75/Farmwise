@@ -12,13 +12,35 @@ local DAY = 86400
 -- columns from the right edge: key, title, width, how it is sorted first (descending: biggest first)
 local COLUMNS = {
     { key = "last", title = "Last sale", width = 84 },
-    { key = "rate", title = "Success", width = 66 },
-    { key = "returned", title = "Returned", width = 70 },
+    { key = "rate", title = "Success", width = 60, number = true },
+    { key = "returned", title = "Returned", width = 64, number = true },
     { key = "average", title = "Average price (-5%)", width = 150 },
     { key = "net", title = "Earned (-5% cut)", width = 150 },
-    { key = "sold", title = "Sold", width = 62 },
+    -- the numbers of Sold end close to the right edge of the column, so that when they grow (hundreds,
+    -- thousands) they have room to grow to the left, and never come near the quality mark of the item
+    { key = "sold", title = "Sold", width = 50, number = true, inset = 4, titleShift = 9 },
 }
+-- the quality mark after the name has its own place, so that a long name is cut before it and not through it
+-- the item column and its quality mark are the same in the Sell, Actions and History pages (see the Sell page)
+local ITEM = FWR.ITEM_COLUMN or { width = 216, tierWidth = 14, tierHeight = 12, tierGap = 3 }
+local TIER_W, TIER_H, TIER_GAP = ITEM.tierWidth, ITEM.tierHeight, ITEM.tierGap
 local COLUMN_GAP = 4
+
+-- what the columns at the right edge take (with their gaps): the item column has the rest. The Sell page reads it
+-- to give its item column the same size.
+-- and where each of them stands (distance of its right edge from the right edge of the row), so that the
+-- Actions page puts its columns in exactly the same places.
+do
+    local total = 4
+    local layout = { right = {}, width = {} }
+    for _, column in ipairs(COLUMNS) do
+        layout.right[column.key] = total - 4
+        layout.width[column.key] = column.width
+        total = total + column.width + COLUMN_GAP
+    end
+    FWR.HISTORY_RIGHT_WIDTH = total
+    FWR.HISTORY_LAYOUT = layout
+end
 
 -- the order FarmWise chooses (the round arrow goes back to it): the most gold earned first
 local DEFAULT_SORT_KEY, DEFAULT_SORT_DESCENDING = "net", true
@@ -107,6 +129,24 @@ local function setMoneyCell(cell, copper)
     showPart(cell.parts.gold, gold > 0 and string.format("%.0f", gold) or nil)
     showPart(cell.parts.silver, (gold > 0 or silver > 0) and silver or nil)
     showPart(cell.parts.copper, rest)
+end
+
+-- the colour of the rarity of an item (white, green, blue...), or white when the game does not know it yet
+local function rarityColor(itemID)
+    local quality
+    if itemID then
+        if C_Item and C_Item.GetItemQualityByID then
+            quality = C_Item.GetItemQualityByID(itemID)
+        end
+        if quality == nil and C_Item and C_Item.GetItemInfo then
+            quality = select(3, C_Item.GetItemInfo(itemID))
+        end
+    end
+    local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+    if color then
+        return color.r, color.g, color.b
+    end
+    return 1, 1, 1
 end
 
 local function relativeDay(last)
@@ -198,6 +238,12 @@ local function build(api)
     end
     api.historyBuilt = true
 
+    -- what the other pages of the tab strip (the Actions page) use of this one
+    api.createMoneyCell = createMoneyCell
+    api.setMoneyCell = setMoneyCell
+    api.rarityColor = rarityColor
+    api.createSubTab = createSubTab
+
     ----------------------------------------------------------
     -- the two small tabs
     ----------------------------------------------------------
@@ -256,12 +302,12 @@ local function build(api)
 
     -- the titles of the columns: they sort
     local headers = {}
-    local function makeHeader(key, text, width, anchorRight)
+    local function makeHeader(key, text, width, anchorRight, titleShift)
         local button = CreateFrame("Button", nil, hist)
         button:SetHeight(21)
         if key == "name" then
+            button:SetWidth(ITEM.width)
             button:SetPoint("LEFT", strip, "LEFT", api.nameX, 0)
-            button:SetPoint("RIGHT", strip, "RIGHT", -anchorRight, 0)
         else
             button:SetWidth(width)
             button:SetPoint("RIGHT", strip, "RIGHT", -anchorRight, 0)
@@ -273,7 +319,7 @@ local function build(api)
             button.label:SetPoint("LEFT", button, "LEFT", 0, 0)
             button.label:SetJustifyH("LEFT")
         else
-            button.label:SetPoint("CENTER", button, "CENTER", 0, 0)
+            button.label:SetPoint("CENTER", button, "CENTER", titleShift or 0, 0)
         end
         button.arrow = button:CreateTexture(nil, "OVERLAY")
         button.arrow:SetTexture("Interface/Buttons/UI-SortArrow")
@@ -290,11 +336,10 @@ local function build(api)
     local columnRight = {}
     for _, column in ipairs(COLUMNS) do
         columnRight[column.key] = offset
-        makeHeader(column.key, column.title, column.width, offset)
+        makeHeader(column.key, column.title, column.width, offset, column.titleShift)
         offset = offset + column.width + COLUMN_GAP
     end
-    local nameRight = offset + 4
-    makeHeader("name", "Item", nil, nameRight)
+    makeHeader("name", "Item", nil, 0)
 
     ----------------------------------------------------------
     -- the lines
@@ -329,18 +374,26 @@ local function build(api)
 
         row.name = row:CreateFontString(nil, "OVERLAY", "Number14FontWhite")
         row.name:SetPoint("LEFT", row, "LEFT", api.nameX, -1)
-        row.name:SetPoint("RIGHT", row, "RIGHT", -nameRight, 0)
+        row.name:SetWidth(ITEM.width - TIER_W - TIER_GAP)
         row.name:SetJustifyH("LEFT")
         row.name:SetWordWrap(false)
+
+        row.tier = row:CreateTexture(nil, "OVERLAY")
+        row.tier:SetSize(TIER_W, TIER_H)
+        row.tier:SetPoint("LEFT", row, "LEFT", api.nameX + ITEM.width - TIER_W, 0)
+        row.tier:Hide()
 
         for _, column in ipairs(COLUMNS) do
             if column.key == "net" or column.key == "average" then
                 row[column.key .. "Cell"] = createMoneyCell(row, columnRight[column.key], column.width, api.numberFont, api.rowHeight)
             else
                 local text = row:CreateFontString(nil, "OVERLAY", api.numberFont)
-                text:SetWidth(column.width)
-                text:SetPoint("RIGHT", row, "RIGHT", -columnRight[column.key], 0)
-                text:SetJustifyH("CENTER")
+                -- numbers end on the same line (units under units, tens under tens), a little left of the
+                -- middle of the column, where the title is
+                local inset = column.inset or (column.number and math.max(0, math.floor(column.width / 2) - 12) or 0)
+                text:SetWidth(column.width - inset)
+                text:SetPoint("RIGHT", row, "RIGHT", -(columnRight[column.key] + inset), 0)
+                text:SetJustifyH(column.number and "RIGHT" or "CENTER")
                 text:SetWordWrap(false)
                 row[column.key] = text
             end
@@ -463,12 +516,18 @@ local function build(api)
                 row.icon:SetTexture(icon or "Interface/Icons/INV_Misc_QuestionMark")
                 local shown = tostring(data.name)
                 local tier = data.itemID and FWR.GetItemQualityTier and FWR:GetItemQualityTier(data.itemID)
+                local tierShown = false
                 if tier then
-                    shown = shown .. string.format(" |A:Professions-ChatIcon-Quality-12-Tier%d:15:17:1:0|a", tier)
-                elseif not data.itemID then
+                    tierShown = pcall(function()
+                        row.tier:SetAtlas(string.format("Professions-ChatIcon-Quality-12-Tier%d", tier))
+                    end)
+                end
+                row.tier:SetShown(tierShown)
+                if not tier and not data.itemID then
                     shown = shown .. " |cff999999(quality unknown)|r"
                 end
                 row.name:SetText(shown)
+                row.name:SetTextColor(rarityColor(data.itemID))
                 row.sold:SetText(tostring(data.sold))
                 setMoneyCell(row.netCell, data.net)
                 setMoneyCell(row.averageCell, data.average)
@@ -535,12 +594,22 @@ local function build(api)
     ----------------------------------------------------------
     -- switching between the two pages
     ----------------------------------------------------------
+    local extraPages = {}   -- the pages added between Sell and History: { key, tab, frame, onShow }
+
     local function showPage(which)
         local history = which == "history"
-        panel.fwHistoryShown = history
+        panel.fwHistoryShown = which ~= "sell"
         hist:SetShown(history)
-        setTabSelected(sellTab, not history)
+        setTabSelected(sellTab, which == "sell")
         setTabSelected(historyTab, history)
+        for _, page in ipairs(extraPages) do
+            local on = page.key == which
+            page.frame:SetShown(on)
+            setTabSelected(page.tab, on)
+            if on and page.onShow then
+                pcall(page.onShow)
+            end
+        end
         if history then
             firstRow = 1
             refresh()
@@ -555,9 +624,28 @@ local function build(api)
         local on = FWR.IsSalesHistoryEnabled and FWR:IsSalesHistoryEnabled()
         sellTab:SetShown(on)
         historyTab:SetShown(on)
+        for _, page in ipairs(extraPages) do
+            page.tab:SetShown(on)
+        end
         if not on then
             showPage("sell")
         end
+    end
+
+    -- another page between Sell and History: spec = { key, title, frame, onShow }
+    api.addPage = function(spec)
+        local tab = createSubTab(panel, spec.title)
+        local last = #extraPages > 0 and extraPages[#extraPages].tab or sellTab
+        tab:SetPoint("LEFT", last, "RIGHT", 4, 0)
+        historyTab:ClearAllPoints()
+        historyTab:SetPoint("LEFT", tab, "RIGHT", 4, 0)
+        extraPages[#extraPages + 1] = { key = spec.key, tab = tab, frame = spec.frame, onShow = spec.onShow }
+        tab:SetScript("OnClick", function()
+            showPage(spec.key)
+        end)
+        spec.frame:Hide()
+        applyEnabled()
+        setTabSelected(tab, false)
     end
 
     sellTab:SetScript("OnClick", function()
@@ -574,6 +662,9 @@ local function build(api)
     end)
     panel:HookScript("OnHide", function()
         hist:Hide()
+        for _, page in ipairs(extraPages) do
+            page.frame:Hide()
+        end
         panel.fwHistoryShown = false
     end)
 
