@@ -197,7 +197,6 @@ local postedNote = nil
 local autoPost = { running = false, waiting = nil, since = 0, bagChanged = false, lastName = nil }
 local updateAutoButton
 local wheelActive = false   -- the mouse wheel is bound to the button now
-local wheelStats = { presses = 0, accepted = 0, refused = 0, ignored = 0 }   -- what the scrolls led to
 local ourTabIndex = nil
 local ourTab = nil
 local viewHidden = false   -- the list shows the items that are left out, instead of the others
@@ -543,8 +542,6 @@ local function priceArrived(itemID)
         end
         entry.usual = FWR.GetUsualPrice and FWR:GetUsualPrice(listings) or nil
 
-        -- announced for whoever wants to look at the listings (nothing needs to be listening)
-        FWR:Emit("listingsRead", itemID, entry.name, listings)
     end)
 
     local info = C_AuctionHouse.GetCommoditySearchResultInfo(itemID, 1)
@@ -923,7 +920,6 @@ local function postEntry(entry)
     -- is made, nothing more to do; true: the game asks "are you sure?" (AUCTION_HOUSE_POST_WARNING) and the post
     -- waits for the answer. Nothing at all (nil): the game did not take the call (for example it wants a click).
     local needsConfirmation = C_AuctionHouse.PostCommodity(location, duration, quantity, entry.price)
-    FWR:Emit("autoPostTrace", string.format("PostCommodity(%s x%d, %d) answered needsConfirmation=%s", tostring(entry.name), quantity, duration, tostring(needsConfirmation)))
     if needsConfirmation == nil then
         postedNote = "The Auction House did not accept this post."
         refreshRows()
@@ -1008,7 +1004,6 @@ updateAutoButton = function()
 end
 
 local function stopAutoPost(note)
-    FWR:Emit("autoPostTrace", string.format("stopped: %s", tostring(note)))
     autoPost.running = false
     autoPost.waiting = nil
     if note then
@@ -1032,7 +1027,6 @@ local function startAutoPost()
         return
     end
     local ready = readyEntries()
-    FWR:Emit("autoPostTrace", string.format("click: %d ready", #ready))
     local entry = ready[1]
     if not entry then
         return
@@ -1045,13 +1039,10 @@ local function startAutoPost()
     autoPost.lastName = tostring(entry.name)
 
     local ok, started = pcall(postEntry, entry)
-    FWR:Emit("autoPostTrace", string.format("post: pcall ok=%s started=%s", tostring(ok), tostring(started)))
     if not (ok and started) then
-        wheelStats.refused = wheelStats.refused + 1
         stopAutoPost("The Auction House did not accept this post.")
         return
     end
-    wheelStats.accepted = wheelStats.accepted + 1
 
     -- if the game never answers, the button does not stay on "Posting..."
     local since = autoPost.since
@@ -1079,25 +1070,17 @@ local function wheelPress()
         return
     end
     wheelAt = now
-    wheelStats.presses = wheelStats.presses + 1
 
     if autoPost.running then
-        wheelStats.ignored = wheelStats.ignored + 1
-        FWR:Emit("autoPostTrace", string.format("scroll %d: ignored (the last post is not finished)", wheelStats.presses))
         return
     end
     if pricesLoading() then
-        wheelStats.ignored = wheelStats.ignored + 1
-        FWR:Emit("autoPostTrace", string.format("scroll %d: ignored (the prices are loading)", wheelStats.presses))
         return
     end
     if #readyEntries() == 0 then
-        wheelStats.ignored = wheelStats.ignored + 1
-        FWR:Emit("autoPostTrace", string.format("scroll %d: ignored (nothing is ready)", wheelStats.presses))
         return
     end
 
-    FWR:Emit("autoPostTrace", string.format("scroll %d: posting", wheelStats.presses))
     startAutoPost()
 end
 
@@ -1126,7 +1109,6 @@ end
 
 -- the game answered the post that is waited for
 local function autoPostCreated()
-    FWR:Emit("autoPostTrace", string.format("AUCTION_HOUSE_AUCTION_CREATED (running=%s waiting=%s)", tostring(autoPost.running), tostring(autoPost.waiting)))
     if not (autoPost.running and autoPost.waiting) then
         return
     end
@@ -1157,7 +1139,6 @@ end
 
 -- the game asks to confirm the post: its own window shows; Accept makes the auction, which finishes this post
 local function autoPostNeedsConfirmation()
-    FWR:Emit("autoPostTrace", string.format("AUCTION_HOUSE_POST_WARNING (running=%s waiting=%s)", tostring(autoPost.running), tostring(autoPost.waiting)))
     if not (autoPost.running and autoPost.waiting) then
         return
     end

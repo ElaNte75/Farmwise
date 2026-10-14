@@ -53,12 +53,6 @@ local function realmKey()
     return realm
 end
 
-local function trace(text)
-    if FWR.Emit then
-        FWR:Emit("salesHistoryTrace", text)
-    end
-end
-
 ------------------------------------------------------------
 -- The saved data
 ------------------------------------------------------------
@@ -311,7 +305,6 @@ local function countUnit(unit)
     local when = time()
     if unit.kind == "sale" then
         if not unit.name or not unit.count or unit.count < 1 or not unit.gross then
-            trace("sale mail without full information, not counted: " .. tostring(unit.name))
             return false
         end
         local itemID = resolveItem(unit.name, unit.count, unit.gross)
@@ -333,7 +326,6 @@ local function countUnit(unit)
         while #entry.recent > RECENT_SALES do
             table.remove(entry.recent, 1)
         end
-        trace(string.format("SALE %s x%d gross=%d cut=%d -> %s", unit.name, unit.count, unit.gross, unit.cut, key))
         -- the Actions page clears its line when the gold is taken
         FWR:Emit("auctionUnitCollected", { kind = "sale", itemID = itemID, name = unit.name, count = unit.count })
         return true
@@ -348,7 +340,6 @@ local function countUnit(unit)
         else
             entry.cancelled = entry.cancelled + unit.count
         end
-        trace(string.format("%s %s x%d", string.upper(unit.kind), tostring(unit.name), unit.count))
         FWR:Emit("auctionUnitCollected", { kind = unit.kind, itemID = unit.itemID, name = unit.name, count = unit.count })
         return true
     end
@@ -411,19 +402,7 @@ local function look()
             end
         end
     elseif previous then
-        -- nothing was taken: only carry over what is known; if units left all the same, say so in the trace
-        local stillHere = 0
-        for _, unit in ipairs(current) do
-            for _, old in ipairs(previous) do
-                if sameUnit(unit, old) then
-                    stillHere = stillHere + 1
-                    break
-                end
-            end
-        end
-        if stillHere < #previous then
-            trace(string.format("%d unit(s) left the mailbox without a take call seen (not counted)", #previous - stillHere))
-        end
+        -- nothing was taken: only carry over what is known
         for _, unit in ipairs(current) do
             for _, old in ipairs(previous) do
                 if sameUnit(unit, old) then
@@ -485,27 +464,6 @@ local function lookSoon()
     end
     looking = true
     C_Timer.After(0.1, look)
-end
-
--- a plain text of what the game shows of a mail, for the diagnostics (written to the trace when a mail is taken)
-local function describeRawMail(index)
-    local parts = {}
-    local _, _, sender, subject, money, cod, daysLeft, numItems = GetInboxHeaderInfo(index)
-    parts[#parts + 1] = string.format("header: sender=%s subject=%s money=%s cod=%s daysLeft=%.3f items=%s",
-        tostring(sender), tostring(subject), tostring(money), tostring(cod), tonumber(daysLeft) or -1, tostring(numItems))
-    if GetInboxInvoiceInfo then
-        local r = { GetInboxInvoiceInfo(index) }
-        parts[#parts + 1] = string.format("invoice: type=%s item=%s buyer=%s bid=%s buyout=%s deposit=%s cut=%s r8=%s r9=%s r10=%s count=%s",
-            tostring(r[1]), tostring(r[2]), tostring(r[3]), tostring(r[4]), tostring(r[5]), tostring(r[6]), tostring(r[7]),
-            tostring(r[8]), tostring(r[9]), tostring(r[10]), tostring(r[11]))
-    end
-    for attachment = 1, MAX_ATTACHMENTS do
-        local name, itemID, _, count = GetInboxItem(index, attachment)
-        if name then
-            parts[#parts + 1] = string.format("attachment %d: %s id=%s count=%s", attachment, tostring(name), tostring(itemID), tostring(count))
-        end
-    end
-    return table.concat(parts, " | ")
 end
 
 -- what is known of the mail at the moment it is taken (called from the calls that take it)
@@ -589,13 +547,6 @@ end
 -- the game's calls that take gold or items out of a mail (called by its own mailbox, and by mail addons)
 local function tookSomething(index)
     lastTake = GetTime()
-    -- what the mail is, at the moment it is taken (a mail addon may take a hundred of them in a second)
-    if type(index) == "number" and enabled() then
-        local ok, text = pcall(describeRawMail, index)
-        if ok then
-            trace("TAKE [" .. index .. "] " .. text)
-        end
-    end
     pcall(captureMail, index)
     lookSoon()
 end
@@ -723,14 +674,4 @@ function FWR:ClearSalesHistory()
     if FWR.Emit then
         FWR:Emit("salesHistoryChanged")
     end
-end
-
--- For the diagnostics: what the mailbox looks like to the history right now.
-function FWR:DescribeMailboxForHistory()
-    local lines = {}
-    for _, unit in ipairs(readMailbox()) do
-        lines[#lines + 1] = string.format("%s  %s  name=%s count=%s gross=%s cut=%s", unit.kind, unit.key,
-            tostring(unit.name), tostring(unit.count), tostring(unit.gross), tostring(unit.cut))
-    end
-    return lines
 end
