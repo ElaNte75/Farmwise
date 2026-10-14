@@ -3,7 +3,7 @@
 Version numbers are `major.minor.week`: the last number is the week of the year of the update, the middle
 one grows when settings or behaviour change.
 
-## 4.2.42
+## 4.3.42
 
 **New**
 - Auction House tab, page "Actions" (between Sell and History): one line for each of your posts - active (with the
