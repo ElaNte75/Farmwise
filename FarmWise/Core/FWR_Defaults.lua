@@ -1,25 +1,6 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
--- Newer game versions removed the global GetItemInfoInstant and keep it in C_Item only; the rest of the addon
--- still calls the global one, so it is put back here (this file loads first).
-if type(GetItemInfoInstant) ~= "function" and C_Item and type(C_Item.GetItemInfoInstant) == "function" then
-    GetItemInfoInstant = C_Item.GetItemInfoInstant
-end
-if type(GetItemInfo) ~= "function" and C_Item and type(C_Item.GetItemInfo) == "function" then
-    GetItemInfo = C_Item.GetItemInfo
-end
--- the new spell call gives one table; the old one gave name, rank, icon, cast time, ranges, id
-if type(GetSpellInfo) ~= "function" and C_Spell and type(C_Spell.GetSpellInfo) == "function" then
-    GetSpellInfo = function(spell)
-        local info = C_Spell.GetSpellInfo(spell)
-        if type(info) ~= "table" then
-            return nil
-        end
-        return info.name, nil, info.iconID, info.castTime, info.minRange, info.maxRange, info.spellID, info.originalIconID
-    end
-end
-
 -- The version comes from the "## Version:" line of FarmWise.toc, for example "3.0.1" or "3.0.1 beta".
 -- The first word is the number; any words after it (like "beta") are the release stage, shown next to the
 -- number in the main window. Remove them from the toc line and they disappear from the window too.
@@ -111,6 +92,7 @@ FWR.DEFAULT_SETTINGS = {
         tabWheel = false,       -- the mouse wheel posts the next item, while the tab is open
         tabWheelShift = true,   -- ... but only while Shift is held (so a scroll by accident posts nothing)
         tabTooltips = true,     -- the tooltips of the tab
+        tabOpenFirst = true,    -- the FarmWise tab is the page that is shown when the Auction House opens
         tabEnabled = true,      -- the tab is there at all (off: none of what it brings is on)
         tabPostTime = 1,        -- 1 = 12 hours, 2 = 24 hours, 3 = 48 hours
         tabPriceCheck = false,  -- price check on for all items (an item can differ)

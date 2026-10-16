@@ -1,6 +1,10 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
+-- The game moved these functions into C_Item / C_Spell. They are looked up here, for this file only: nothing
+-- is written to the game's own global names (that would taint the game's code).
+local GetItemInfoInstant = _G.GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
+
 -- Adds the Auction House price (from the last FarmWise scan) to item tooltips, on a line that says
 -- "FarmWise" so it is clear where the number comes from.
 

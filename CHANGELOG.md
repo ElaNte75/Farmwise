@@ -3,6 +3,35 @@
 Version numbers are `major.minor.week`: the last number is the week of the year of the update, the middle
 one grows when settings or behaviour change.
 
+## 4.4.42
+
+**New**
+- The Auction House tab has a new page, **Options**, with all the settings of the tab in one place: posting, average
+  price, the Sell list, what is shown, and the history. In the main FarmWise window only the scanner and the
+  on/off switch of the tab are left.
+- The tab can open by itself when you open the Auction House (switch in Options > Display, on by default). If the
+  prices are old it waits until the scan is finished, so the two do not get in each other's way.
+- The page **Actions** is now called **Auctions**, like the game's own tab.
+- Auctions: a post that is sold shows as sold even when the Auction House is closed - the chat message that the
+  game gives is used. When you open the Auction House again, the page checks itself against the game's list.
+- Auctions: when only a part of a stack is sold, the sold pieces are one line that grows, and the rest stays active.
+- Auctions: the page asks the Auction House again every 30 seconds while it is open. The round arrow in the corner
+  also asks again.
+- Auctions: the bottom line says what is sure: "4 active - 4 sold for 10g 37s 50c". Posts that are not known yet
+  are counted in between ("unknown").
+- Auctions: posts that ran out or were cancelled are not shown any more. A post that disappeared while you were away
+  and is not known yet ("Ended") goes away as soon as the mailbox has been read.
+- History: a sale gets the day it really happened, not the day you took the gold from the mailbox. "Today" and
+  "Yesterday" follow the clock of the realm.
+
+**Fixed**
+- The FarmWise tab no longer makes the game say "FarmWise has been blocked" when you right-click an item in your
+  bags. The tab now lives in a frame of its own and does not write into the Auction House of the game.
+- FarmWise no longer writes its own copies of the game's item and spell functions.
+- A sale could be lost from the books if the mailbox was closed a moment after the gold was taken.
+- The tab button stands where the game's own tabs stand.
+- The chat message that tells about a sale was never recognised before; now it is.
+
 ## 4.3.42
 
 **New**

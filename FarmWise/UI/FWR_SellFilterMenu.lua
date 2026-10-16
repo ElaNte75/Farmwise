@@ -7,6 +7,24 @@ FarmWiseReforged = FWR
 -- It is the game's own context menu (the one every right-click menu of the game uses), so it looks and
 -- behaves like the others. A number that is not in the menu is asked for with the game's small input popup.
 
+-- The game moved GetCoinText into C_CurrencyInfo. It is looked up here (nothing is written to the game's names).
+local GetCoinText = _G.GetCoinText or (C_CurrencyInfo and C_CurrencyInfo.GetCoinText) or function(amount, separator)
+    amount = math.floor(tonumber(amount) or 0)
+    separator = separator or " "
+    local parts = {}
+    local gold, silver, copper = math.floor(amount / 10000), math.floor((amount % 10000) / 100), amount % 100
+    if gold > 0 then
+        parts[#parts + 1] = gold .. "g"
+    end
+    if silver > 0 then
+        parts[#parts + 1] = silver .. "s"
+    end
+    if copper > 0 or #parts == 0 then
+        parts[#parts + 1] = copper .. "c"
+    end
+    return table.concat(parts, separator)
+end
+
 local KEEP_CHOICES = { 10, 20, 50, 100 }
 local HOURS = { 12, 24, 48 }
 local POPUP_KEY = "FARMWISE_KEEP_AMOUNT"

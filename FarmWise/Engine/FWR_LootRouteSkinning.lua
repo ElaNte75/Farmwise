@@ -1,6 +1,18 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
+-- The game moved these functions into C_Item / C_Spell. They are looked up here, for this file only: nothing
+-- is written to the game's own global names (that would taint the game's code).
+local GetItemInfoInstant = _G.GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
+local GetItemInfo = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo)
+local GetSpellInfo = _G.GetSpellInfo or function(spell)
+    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spell)
+    if type(info) ~= "table" then
+        return nil
+    end
+    return info.name, nil, info.iconID, info.castTime, info.minRange, info.maxRange, info.spellID, info.originalIconID
+end
+
 local SKINNING_BATCH_SECONDS = 8.0
 local SKINNING_BATCH_EXTENSION_SECONDS = 6.0
 local SKINNING_USAGE_PROFESSIONS = "Leatherworking"

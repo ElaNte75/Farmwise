@@ -1,6 +1,12 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
+-- The game moved these functions into C_Item / C_Spell. They are looked up here, for this file only: nothing
+-- is written to the game's own global names (that would taint the game's code).
+local GetItemInfoInstant = _G.GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
+local GetItemInfo = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo)
+local GetItemIcon = _G.GetItemIcon or (C_Item and C_Item.GetItemIconByID)
+
 -- "FarmWise" tab of the Auction House.
 -- A list of the trade materials you have farmed and carry in your bags, with the lowest price on the
 -- Auction House right now, a price you can raise or lower, an amount, and a Post button.
@@ -36,7 +42,8 @@ local HOURS = { 12, 24, 48 }       -- the posting times; which one is used: the 
 local PRICE_QUEUE_SECONDS = 0.6   -- the game limits how fast prices can be asked for
 
 local TRADEGOODS_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods) or 7
-local TAB_TITLE = "FarmWise"
+local TAB_TITLE = "FarmWise AH"             -- the label of the tab
+local WINDOW_TITLE = "FarmWise Auction House"   -- the title of the window while the tab is shown
 local PAGE_KEY = "FarmWisePage"
 local GOLD = { 1, 0.82, 0 }
 
@@ -197,7 +204,6 @@ local postedNote = nil
 local autoPost = { running = false, waiting = nil, since = 0, bagChanged = false, lastName = nil }
 local updateAutoButton
 local wheelActive = false   -- the mouse wheel is bound to the button now
-local ourTabIndex = nil
 local ourTab = nil
 local viewHidden = false   -- the list shows the items that are left out, instead of the others
 local hiddenCount = 0      -- how many are left out
@@ -1929,7 +1935,7 @@ end
 
 local function refreshTab()
     local frame = _G.AuctionHouseFrame
-    if not ourTab or not ourTabIndex or type(frame) ~= "table" then
+    if not ourTab or type(frame) ~= "table" then
         return
     end
 
@@ -1941,11 +1947,44 @@ local function refreshTab()
     end
 
     -- the tab you are on is never switched off under you
-    local selected = PanelTemplates_GetSelectedTab(frame) == ourTabIndex
+    local selected = panel and panel:IsShown()
     local usable = selected or not running
     if ourTab.fwUsable ~= usable then
         ourTab.fwUsable = usable
-        PanelTemplates_SetTabEnabled(frame, ourTabIndex, usable)
+        if not selected then
+            ourTab:SetEnabled(usable)
+        end
+    end
+end
+
+-- The option "open the FarmWise tab first". It waits while the prices are being read (or are about to be: the tab
+-- cannot be used then), and opens when they are ready. Only if the game's first page is what is shown: a page the
+-- game chose, for example to sell an item that was right-clicked in the bags, or one that I chose, is left alone.
+local openFirstPending = false
+
+local function tryOpenFirst()
+    if not openFirstPending then
+        return
+    end
+    local settings = FWR.GetSellTabSettings and FWR:GetSellTabSettings()
+    local frame = _G.AuctionHouseFrame
+    local modes = _G.AuctionHouseFrameDisplayMode
+    if not (settings and settings.enabled and settings.openFirst and frame and frame:IsShown()
+        and ourTab and ourTab:IsShown() and panel and not panel:IsShown()) then
+        openFirstPending = false
+        return
+    end
+    if modes and type(frame.GetDisplayMode) == "function" and frame:GetDisplayMode() ~= modes.Buy then
+        openFirstPending = false
+        return
+    end
+    if FWR.IsAuctionScanComing and FWR:IsAuctionScanComing() then
+        return   -- not yet: this is called again when the scan changes
+    end
+    openFirstPending = false
+    local onClick = ourTab:GetScript("OnClick")
+    if onClick then
+        pcall(onClick, ourTab)
     end
 end
 
@@ -1984,8 +2023,7 @@ local function install()
     end
 
     local frame = _G.AuctionHouseFrame
-    if type(frame) ~= "table" or type(frame.Tabs) ~= "table" or type(_G.AuctionHouseFrameDisplayMode) ~= "table"
-        or type(frame.SetDisplayMode) ~= "function" then
+    if type(frame) ~= "table" or type(frame.Tabs) ~= "table" or type(frame.SetDisplayMode) ~= "function" then
         return
     end
     installed = true
@@ -2009,54 +2047,70 @@ local function install()
     }
     FWR:Emit("auctionTabBuilt", FWR.AuctionTab)
 
-    -- 1. the page is a sub-frame of the window, and a display mode lists the sub-frames it shows
-    frame[PAGE_KEY] = panel
-    local displayMode = { PAGE_KEY }
-    _G.AuctionHouseFrameDisplayMode.FarmWise = displayMode
-
-    -- 2. the tab, made exactly like the game makes Buy, Sell and Auctions: its own template, the display mode
-    --    it opens, and placed to the right of the last tab, overlapping it by 15 like they do.
-    --    The template puts the tab into frame.Tabs by itself (parentArray), so it is not added by hand.
+    -- The page is a child of the Auction House window, and the tab a child of a small frame of ours that sits
+    -- right of the game's tabs. NOTHING of ours is written into the game's own tables (its display modes, its
+    -- list of tabs, its keys): whatever an addon writes there is marked untrusted, and the game then blocks its
+    -- own protected actions (a bag item used with the right mouse button) when its code reads that mark.
     local lastTab = frame.Tabs[#frame.Tabs]
-    local tab = CreateFrame("Button", "AuctionHouseFrameFarmWiseTab", frame, "AuctionHouseFrameDisplayModeTabTemplate")
+    local root = CreateFrame("Frame", nil, frame)
+    root:SetSize(10, 10)
+    if lastTab then
+        root:SetPoint("TOPLEFT", lastTab, "TOPRIGHT")
+    end
+
+    -- made like the game's own tabs (its template), but its own parent, so that it is not put into the game's
+    -- list of tabs by the template
+    local tab = CreateFrame("Button", "AuctionHouseFrameFarmWiseTab", root, "AuctionHouseFrameDisplayModeTabTemplate")
     ourTab = tab
     setTabLabel(TAB_TITLE)
-    tab.displayMode = displayMode
     tab:HookScript("OnShow", refreshTab)
     tab:HookScript("OnEnter", showTabHint)
     if lastTab then
-        tab:SetPoint("LEFT", lastTab, "RIGHT", -15, 0)
-    end
-
-    ourTabIndex = nil
-    for index, candidate in ipairs(frame.Tabs) do
-        if candidate == tab then
-            ourTabIndex = index
-            break
+        -- placed exactly as the game places its own tabs one after the other: the way the last one is anchored
+        -- to the one before it (a measured example: TOPLEFT to TOPRIGHT, 3 pixels to the right)
+        local point, _, relativePoint, x, y = lastTab:GetPoint(1)
+        if point and relativePoint and point ~= "BOTTOMLEFT" then
+            tab:SetPoint(point, lastTab, relativePoint, x or 3, y or 0)
+        else
+            tab:SetPoint("TOPLEFT", lastTab, "TOPRIGHT", 3, 0)
         end
     end
-    if not ourTabIndex then
-        ourTabIndex = #frame.Tabs + 1
-        frame.Tabs[ourTabIndex] = tab
+    PanelTemplates_DeselectTab(tab)
+    panel:Hide()
+
+    -- our tab chosen: the game is told to show a page with nothing in it (so it hides its own pages), the tabs
+    -- of the game are drawn as not selected, and our page is shown
+    tab:SetScript("OnClick", function()
+        frame:SetDisplayMode({})
+        frame.displayMode = nil
+        for _, other in ipairs(frame.Tabs) do
+            PanelTemplates_DeselectTab(other)
+        end
+        PanelTemplates_SelectTab(tab)
+        if type(frame.SetTitle) == "function" then
+            frame:SetTitle(WINDOW_TITLE)
+        end
+        panel:Show()
+        refreshTab()
+    end)
+
+    -- A page of the game shown (the user chose one of its tabs, or the game switched by itself, for example to
+    -- sell an item that was right-clicked in the bags): ours goes away. This is watched on the pages of the game
+    -- themselves (a script hook on each page), not by hooking the functions of the Auction House window.
+    local function pageOfTheGameShown()
+        if panel and panel:IsShown() then
+            panel:Hide()
+        end
+        PanelTemplates_DeselectTab(tab)
+        refreshTab()
     end
-
-    -- the game then counts its tabs and remembers which tab belongs to which display mode
-    PanelTemplates_SetNumTabs(frame, #frame.Tabs)
-    if type(frame.tabsForDisplayMode) == "table" then
-        frame.tabsForDisplayMode[displayMode] = ourTabIndex
-    end
-
-    -- the new tab starts deselected: draw the tab that is selected now as selected
-    local current = type(frame.tabsForDisplayMode) == "table" and frame.tabsForDisplayMode[frame.displayMode]
-    PanelTemplates_SetTab(frame, current or PanelTemplates_GetSelectedTab(frame) or 1)
-
-    -- the game chooses the title from the number of the tab; for ours it is our own
-    if type(frame.UpdateTitle) == "function" then
-        hooksecurefunc(frame, "UpdateTitle", function(self)
-            if PanelTemplates_GetSelectedTab(self) == ourTabIndex then
-                self:SetTitle(TAB_TITLE)
-            end
-        end)
+    for _, key in ipairs({ "SearchBar", "CategoriesList", "BrowseResultsFrame", "ItemBuyFrame", "CommoditiesBuyFrame",
+        "WoWTokenResults", "ItemSellFrame", "CommoditiesSellFrame", "WoWTokenSellFrame", "ItemSellList",
+        "CommoditiesSellList", "AuctionsFrame" }) do
+        local page = frame[key]
+        if type(page) == "table" and type(page.HookScript) == "function" then
+            page:HookScript("OnShow", pageOfTheGameShown)
+        end
     end
 
     -- the filters of an item changed (in its right-click window): make the list again
@@ -2069,7 +2123,10 @@ local function install()
     end)
 
     -- follow the scan and the age of the prices
-    FWR:Subscribe("auctionScanChanged", refreshTab)
+    FWR:Subscribe("auctionScanChanged", function()
+        refreshTab()
+        tryOpenFirst()
+    end)
     C_Timer.NewTicker(5, function()
         if frame:IsShown() then
             refreshTab()
@@ -2132,7 +2189,13 @@ events:SetScript("OnEvent", function(_, event, ...)
     elseif event == "AUCTION_HOUSE_SHOW" then
         pcall(install)
         refreshTab()
+        -- the option "open the FarmWise tab first": a moment later, when the game has made its own first page
+        openFirstPending = true
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.2, tryOpenFirst)
+        end
     elseif event == "AUCTION_HOUSE_CLOSED" then
+        openFirstPending = false
         priceQueue, priceBusy = {}, false
         known = {}
         if autoPost.running then

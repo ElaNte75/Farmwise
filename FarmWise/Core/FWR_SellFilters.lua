@@ -1,6 +1,10 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
+-- The game moved these functions into C_Item / C_Spell. They are looked up here, for this file only: nothing
+-- is written to the game's own global names (that would taint the game's code).
+local GetItemInfo = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo)
+
 -- What FarmWise sells and what it does not: the filters you set per item, the comparison with the vendor,
 -- and which items count as "farmed". Used by the Auction House tab (its list and its right-click window)
 -- and by the item tooltip.
@@ -40,6 +44,7 @@ function FWR:GetSellTabSettings()
     return {
         enabled = ah.tabEnabled ~= false,
         tooltips = ah.tabTooltips ~= false,
+        openFirst = ah.tabOpenFirst ~= false,
         wheel = ah.tabWheel == true,
         wheelShift = ah.tabWheelShift ~= false,   -- the wheel posts only while Shift is held
         onlyFarmed = ah.tabOnlyFarmed == true,
@@ -394,4 +399,3 @@ function FWR:GetItemQualityLabel(itemID)
     local tier = self:GetItemQualityTier(itemID)
     return tier and ("Q" .. tier) or nil
 end
-

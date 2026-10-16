@@ -1,0 +1,306 @@
+local H = dofile(HARNESS_PATH)
+local check = H.check
+local FWR
+
+local function section(title) print("\n== " .. title) end
+
+------------------------------------------------------------
+section("1. Loading the files of the addon")
+FarmWiseDB = {}
+FarmWiseReforgedDB = {}
+FarmWiseReforgedSettingsDB = {}
+H.defineItem(236965, "Bright Linen", 7, 200, 1000)
+H.defineItem(236963, "Bright Linen", 7, 200, 1000)
+H.defineItem(242639, "Practically Pork", 7, 200, 100)
+H.defineItem(275280, "Gamey Flank", 7, 200, 100)
+H.defineItem(237359, "Refulgent Copper Ore", 7, 200, 500)
+H.defineItem(236761, "Tranquility Bloom", 7, 200, 500)
+H.defineItem(250000, "Flask of Tests", 0, 20, 5000)
+H.defineItem(260000, "Potion of Tests", 0, 20, 5000)
+
+local loaded = H.loadAddon()
+print("  files loaded: " .. loaded)
+for _, e in ipairs(H.results.errors) do print("  ERROR " .. e) end
+check("every file of the toc loads without an error", #H.results.errors == 0, #H.results.errors .. " error(s)")
+FWR = FarmWiseReforged
+check("the addon table exists", type(FWR) == "table")
+
+section("2. Starting up (ADDON_LOADED, PLAYER_LOGIN)")
+local before = #H.results.errors
+H.fire("ADDON_LOADED", "FarmWise")
+H.fire("PLAYER_LOGIN")
+H.advance(2)
+for i = before + 1, #H.results.errors do print("  ERROR " .. H.results.errors[i]) end
+check("startup runs without errors", #H.results.errors == before)
+check("settings have their defaults (tabHistory on)", FWR.Settings and FWR.Settings.ah and FWR.Settings.ah.tabHistory == true)
+check("scanCommodities is on by default", FWR.Settings.ah.scanCommodities == true)
+
+section("3. Sales history: the mail of a real Open All (trace of the user)")
+local function resetHistory()
+    FWR:ClearSalesHistory()
+    inbox = {}
+    FWR:Emit("noop")
+end
+local function sale(name, count, gross, cut, id)
+    return { subject = "Auction successful: " .. name, money = gross - cut + 100, daysLeft = 30,
+        invoice = { type = "seller", name = name, bid = gross, buyout = count, deposit = 100, cut = cut, count = count } }
+end
+local function rows()
+    local out = {}
+    for _, r in ipairs(FWR:GetSalesHistoryRows()) do out[r.key] = r end
+    return out
+end
+local function post(itemID, qty, unit)
+    C_Item.GetItemID = function() return itemID end
+    C_AuctionHouse.PostCommodity({}, 1, qty, unit)
+    H.fire("AUCTION_HOUSE_AUCTION_CREATED", 1)
+end
+local function openAll(seconds)
+    local elapsed = 0
+    while elapsed < seconds do
+        for i = 1, #inbox do AutoLootMailItem(i) end
+        H.advance(0.15)
+        elapsed = elapsed + 0.15
+    end
+    H.advance(1)
+end
+
+resetHistory()
+post(236965, 21, 13300)
+post(236963, 18, 9800)
+inbox = {
+    sale("Bright Linen", 21, 279300, 13965),
+    sale("Practically Pork", 3, 29100, 1455),
+    sale("Bright Linen", 18, 176400, 8820),
+    sale("Gamey Flank", 1, 29100, 1455),
+}
+FWR:Emit("noop")
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(3)
+local r = rows()
+check("Bright Linen (the 21 posted at 13300) sold 21", r["236965"] and r["236965"].sold == 21, r["236965"] and r["236965"].sold)
+check("Bright Linen (quality 2) sold 18 and kept apart", r["236963"] and r["236963"].sold == 18, r["236963"] and r["236963"].sold)
+check("Practically Pork sold 3 (not 9)", r["242639"] and r["242639"].sold == 3, r["242639"] and r["242639"].sold)
+check("Gamey Flank sold 1 (not 2)", r["275280"] and r["275280"].sold == 1, r["275280"] and r["275280"].sold)
+check("net of Bright Linen = gross - cut", r["236965"] and r["236965"].net == 279300 - 13965, r["236965"] and r["236965"].net)
+check("one sale line each", r["236965"] and r["236965"].sales == 1 and r["242639"].sales == 1)
+check("the mailbox is empty at the end", #inbox == 0, #inbox)
+
+section("4. Sales history: two equal sales are two sales")
+resetHistory()
+post(236965, 10, 13300)
+inbox = { sale("Bright Linen", 10, 133000, 6650), sale("Bright Linen", 10, 133000, 6650) }
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(3)
+r = rows()
+check("two equal mails: sold 20", r["236965"] and r["236965"].sold == 20, r["236965"] and r["236965"].sold)
+check("two sales", r["236965"] and r["236965"].sales == 2, r["236965"] and r["236965"].sales)
+
+section("5. Sales history: taken before the first look (a mail addon is faster)")
+resetHistory()
+post(242639, 3, 9700)
+inbox = { sale("Practically Pork", 3, 29100, 1455) }
+H.fire("MAIL_SHOW")
+AutoLootMailItem(1)      -- the same instant, before any look
+AutoLootMailItem(1)
+H.advance(2)
+r = rows()
+check("taken at once: sold 3, counted once", r["242639"] and r["242639"].sold == 3 and r["242639"].sales == 1, r["242639"] and (r["242639"].sold .. "/" .. r["242639"].sales))
+
+section("6. Sales history: a take that fails is not counted")
+resetHistory()
+post(242639, 3, 9700)
+local blocked = sale("Practically Pork", 3, 29100, 1455)
+blocked.blockTake = true
+inbox = { blocked }
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(1.5)
+r = rows()
+check("nothing counted while the mail is still there", not r["242639"] or r["242639"].sold == 0, r["242639"] and r["242639"].sold)
+blocked.blockTake = false
+openAll(1.5)
+r = rows()
+check("counted once when it is finally taken", r["242639"] and r["242639"].sold == 3, r["242639"] and r["242639"].sold)
+
+section("7. Sales history: expired auction (returned) and the success rate")
+resetHistory()
+post(236965, 200, 13300)
+inbox = {
+    sale("Bright Linen", 80, 1064000, 53200),
+    { subject = "Auction expired: Bright Linen", money = 0, daysLeft = 30, items = { { name = "Bright Linen", id = 236965, count = 120 } } },
+}
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(3)
+r = rows()
+check("sold 80", r["236965"] and r["236965"].sold == 80, r["236965"] and r["236965"].sold)
+check("returned 120", r["236965"] and r["236965"].returned == 120, r["236965"] and r["236965"].returned)
+check("success 40%", r["236965"] and math.abs((r["236965"].rate or 0) - 0.4) < 1e-9, r["236965"] and r["236965"].rate)
+check("average price of one = net / sold", r["236965"] and math.abs(r["236965"].average - (1064000 - 53200) / 80) < 1e-6)
+
+section("8. Sales history: open the mailbox, close it, open it again")
+resetHistory()
+post(242639, 6, 9700)
+inbox = { sale("Practically Pork", 3, 29100, 1455), sale("Practically Pork", 3, 29100, 1455) }
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+AutoLootMailItem(1)
+H.advance(1)
+H.fire("MAIL_CLOSED")
+H.advance(0.5)
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(2)
+r = rows()
+check("two mails over two visits: sold 6, two sales", r["242639"] and r["242639"].sold == 6 and r["242639"].sales == 2, r["242639"] and (r["242639"].sold .. "/" .. r["242639"].sales))
+
+section("9. Sales history: switched off records nothing")
+resetHistory()
+FWR.Settings.ah.tabHistory = false
+inbox = { sale("Practically Pork", 3, 29100, 1455) }
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(2)
+r = rows()
+check("nothing recorded while it is off", next(r) == nil)
+FWR.Settings.ah.tabHistory = true
+
+section("9b. Mails that are not sales of ours are not counted")
+resetHistory()
+inbox = {
+    -- a purchase (Auction won): an invoice of the buyer
+    { subject = "Auction won: Bright Linen (21)", money = 0, items = { { name = "Bright Linen", id = 236965, count = 21 } },
+      invoice = { type = "buyer", name = "Bright Linen", bid = 279300, buyout = 21, deposit = 0, cut = 0, count = 21 } },
+    -- gold from another player, with a subject that pretends to be a sale
+    { sender = "Somebody", canReply = true, subject = "Auction successful: Bright Linen", money = 500000 },
+    -- an item from another player with a subject that pretends to be an expired auction
+    { sender = "Somebody", canReply = true, subject = "Auction expired: Bright Linen", money = 0,
+      items = { { name = "Bright Linen", id = 236965, count = 50 } } },
+    -- gold only
+    { sender = "A friend", canReply = true, subject = "Here is your gold", money = 100000 },
+    -- an item that was posted by someone else and outbid (gold back)
+    { subject = "Outbid on Bright Linen", money = 90000 },
+}
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(3)
+r = rows()
+check("purchases, gifts and gold transfers are not sales", next(r) == nil)
+
+section("10. Auction House scan: the levels")
+ah.market = {
+    [236965] = { class = 7, price = 13300, qty = 500 },
+    [237359] = { class = 7, price = 50000, qty = 100 },
+    [250000] = { class = 0, price = 90000, qty = 30 },
+    [260000] = { class = 0, price = 20000, qty = 30 },
+}
+FarmWiseDB._ah = nil
+FWR.Settings.ah.scanCommodities = true
+FWR.Settings.ah.fullScan = false
+ah.queries = {}
+H.fire("AUCTION_HOUSE_SHOW")
+H.advance(20, 0.1)
+local store = FWR:GetAuctionDataStore()
+local count = 0
+for _ in pairs(store.items) do count = count + 1 end
+check("commodities level: trade goods and consumables are priced", count == 4, count)
+check("one query for each class", #ah.queries == 5, #ah.queries)
+check("the level is remembered", store.lastScanLevel == "commodities", store.lastScanLevel)
+check("the scan is not running any more", not FWR:IsAuctionScanRunning())
+
+FWR.Settings.ah.scanCommodities = false
+check("a different level is allowed to scan at once", FWR:GetAuctionScanCooldownSeconds() == 0)
+FarmWiseDB._ah = nil
+ah.queries = {}
+H.fire("AUCTION_HOUSE_CLOSED")
+H.fire("AUCTION_HOUSE_SHOW")
+H.advance(20, 0.1)
+store = FWR:GetAuctionDataStore()
+count = 0
+for _ in pairs(store.items) do count = count + 1 end
+check("trade level: only trade goods", count == 2, count)
+check("trade level: one query", #ah.queries == 1, #ah.queries)
+
+section("11. Prices: usual price, zones")
+local listings = {}
+for i = 1, 30 do listings[#listings + 1] = { price = 1000 + i * 10, quantity = 10 } end
+-- a few listings at a silly low price must not move the usual price
+table.insert(listings, 1, { price = 100, quantity = 2 })
+local usual = FWR:GetUsualPrice(listings)
+check("usual price is found", type(usual) == "number", tostring(usual))
+check("a bait listing does not drag it down", usual and usual > 1000, tostring(usual))
+check("low zone below 85%", FWR:GetPriceZone(usual * 0.5, usual) == "low")
+check("normal zone", FWR:GetPriceZone(usual * 1.0, usual) == "normal")
+check("high zone above 125%", FWR:GetPriceZone(usual * 1.5, usual) == "high")
+check("too few listings gives no usual price", FWR:GetUsualPrice({ { price = 5, quantity = 1 } }) == nil)
+
+section("12. Trend")
+FarmWiseDB._priceHistory = nil
+local today = math.floor(time() / 86400)
+FarmWiseDB._priceHistory = { TestRealm = { ["236965"] = {} } }
+for ago = 0, 6 do
+    local value = ago <= 2 and 1300 or 1000
+    FarmWiseDB._priceHistory.TestRealm["236965"][today - ago] = { value, value, value, 1, { value } }
+end
+local trend = FWR:GetPriceTrend(236965)
+check("trend goes up when the last days are higher", trend and trend.direction == "up", trend and trend.direction)
+
+section("13. Vendor comparison")
+FarmWiseDB._ah = { items = { ["242639"] = { itemID = 242639, unitPrice = 90 } } }
+FWR.Settings.ah.scanCommodities = true
+check("vendor 100 > AH 90 after the cut", FWR:IsSoldBetterToVendor(242639) == true)
+FarmWiseDB._ah = { items = { ["242639"] = { itemID = 242639, unitPrice = 5000 } } }
+check("AH 5000 beats the vendor", FWR:IsSoldBetterToVendor(242639) == false)
+
+section("14. Options window builds")
+local errorsBefore = #H.results.errors
+local ok, err = pcall(function() FWR:OpenControlPanelWindow() end)
+check("the control panel opens", ok, err)
+H.advance(1)
+for i = errorsBefore + 1, #H.results.errors do print("  ERROR " .. H.results.errors[i]) end
+check("no errors while it builds", #H.results.errors == errorsBefore)
+
+section("15. Slash commands")
+for _, command in ipairs({ "status", "advisor", "scan", "ui", "options" }) do
+    local okCommand, errCommand = pcall(SlashCmdList.FARMWISEREFORGED, command)
+    check("/fw " .. command, okCommand, errCommand)
+end
+
+section("16. Scan with many batches: the Advisor is not rebuilt for each one")
+local refreshes = 0
+local originalRefresh = FWR.RefreshAdvisorPanel
+FWR.RefreshAdvisorPanel = function(self) refreshes = refreshes + 1 end
+local batches = 0
+C_AuctionHouse.HasFullBrowseResults = function() return batches >= 40 end
+C_AuctionHouse.RequestMoreBrowseResults = function()
+    batches = batches + 1
+    C_Timer.After(0.05, function() H.fire("AUCTION_HOUSE_BROWSE_RESULTS_ADDED") end)
+end
+FWR.Settings.ah.scanCommodities = false
+FWR.Settings.ah.fullScan = false
+FarmWiseDB._ah = nil
+H.fire("AUCTION_HOUSE_CLOSED")
+H.fire("AUCTION_HOUSE_SHOW")
+H.advance(30, 0.05)
+check("the scan went through its 40 batches", batches >= 40, batches)
+check("the Advisor was refreshed a few times only (not 40+)", refreshes > 0 and refreshes <= 8, refreshes)
+FWR.RefreshAdvisorPanel = originalRefresh
+
+section("17. The price step option")
+FarmWiseReforgedSettingsDB.ah = FarmWiseReforgedSettingsDB.ah or {}
+FarmWiseReforgedSettingsDB.ah.tabPriceStep = 3
+check("step 3 is read", FWR:GetSellTabSettings().priceStep == 3)
+FarmWiseReforgedSettingsDB.ah.tabPriceStep = 99
+check("a step above 20 becomes 20", FWR:GetSellTabSettings().priceStep == 20)
+FarmWiseReforgedSettingsDB.ah.tabPriceStep = 0
+check("a step of 0 becomes 1", FWR:GetSellTabSettings().priceStep == 1)
+FarmWiseReforgedSettingsDB.ah.tabPriceStep = nil
+check("nothing set is 5", FWR:GetSellTabSettings().priceStep == 5)
+
+print(string.format("\nRESULT: %d passed, %d failed, %d runtime error(s) caught", H.results.pass, H.results.fail, #H.results.errors))
+for i, e in ipairs(H.results.errors) do
+    if i <= 15 then print("  runtime error: " .. tostring(e):sub(1, 500)) end
+end

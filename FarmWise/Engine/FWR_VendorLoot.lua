@@ -1,6 +1,10 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
+-- The game moved these functions into C_Item / C_Spell. They are looked up here, for this file only: nothing
+-- is written to the game's own global names (that would taint the game's code).
+local GetItemInfo = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo)
+
 -- Value of looted scrap.
 -- Scrap is every poor quality (grey) item: it is only good for the vendor. Its vendor price is
 -- recorded the moment it is looted, for the zone and sub-zone you are standing in, so it does not

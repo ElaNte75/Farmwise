@@ -10,9 +10,10 @@ local GOLD = { 1, 0.82, 0 }
 -- how each state of a post is told: the words, the colour, and its place when the list is not sorted by the user
 local STATES = {
     sold = { text = "Sold", color = { 0.25, 0.9, 0.3 }, order = 1 },
-    expired = { text = "Expired", color = { 1, 0.6, 0.2 }, order = 2 },
-    cancelled = { text = "Cancelled", color = { 0.7, 0.7, 0.7 }, order = 3 },
-    active = { text = "Active", color = { 1, 1, 1 }, order = 4 },
+    ended = { text = "Ended", color = { 0.85, 0.8, 0.55 }, order = 2 },
+    expired = { text = "Expired", color = { 1, 0.6, 0.2 }, order = 3 },
+    cancelled = { text = "Cancelled", color = { 0.7, 0.7, 0.7 }, order = 4 },
+    active = { text = "Active", color = { 1, 1, 1 }, order = 5 },
 }
 
 -- from the left: Item, Amount, Price each (after the cut), Expected (after the cut), Status, then the room that
@@ -228,9 +229,27 @@ local function build(api)
         row.cancel = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
         row.cancel:SetSize(CANCEL_WIDTH - 10, 18)
         row.cancel:SetPoint("RIGHT", row, "RIGHT", -5, 0)
+        -- a small text, in the middle of the small button
         pcall(function()
-            row.cancel:SetNormalFontObject("GameFontNormalSmall")
-            row.cancel:SetHighlightFontObject("GameFontHighlightSmall")
+            -- font objects of its own (the button puts its font back on every hover and press)
+            local file = GameFontNormalSmall and GameFontNormalSmall:GetFont()
+            if file and CreateFont then
+                local normal = _G.FarmWiseCancelButtonFont or CreateFont("FarmWiseCancelButtonFont")
+                normal:SetFont(file, 9, "")
+                normal:SetTextColor(1, 0.82, 0)
+                local highlight = _G.FarmWiseCancelButtonFontHighlight or CreateFont("FarmWiseCancelButtonFontHighlight")
+                highlight:SetFont(file, 9, "")
+                highlight:SetTextColor(1, 1, 1)
+                row.cancel:SetNormalFontObject(normal)
+                row.cancel:SetHighlightFontObject(highlight)
+                row.cancel:SetDisabledFontObject(normal)
+            end
+            local text = row.cancel:GetFontString()
+            if text then
+                text:ClearAllPoints()
+                text:SetPoint("CENTER", row.cancel, "CENTER", 0, 0)
+                text:SetJustifyH("CENTER")
+            end
         end)
         row.cancel:SetText("Cancel")
         row.cancel:SetScript("OnClick", function()
@@ -333,15 +352,17 @@ local function build(api)
         local maxFirst = math.max(1, #sorted - api.visibleRows + 1)
         firstRow = math.max(1, math.min(firstRow, maxFirst))
 
-        local active, toCollect, expected = 0, 0, 0
+        local active, soldCount, unknown, toCollect = 0, 0, 0, 0
         for _, line in ipairs(sorted) do
             if line.state == "active" then
                 active = active + 1
-            else
-                toCollect = toCollect + 1
+            elseif line.state == "sold" then
+                soldCount = soldCount + 1
+            elseif line.state == "ended" then
+                unknown = unknown + 1
             end
-            if line.state == "active" or line.state == "sold" then
-                expected = expected + line.net
+            if line.state == "sold" then
+                toCollect = toCollect + line.net   -- only what is sold is sure: the gold waits in the mailbox
             end
         end
 
@@ -394,8 +415,10 @@ local function build(api)
         else
             empty:Hide()
         end
-        status:SetText(string.format("%d posts  -  %d active  -  %d to take from the mailbox  -  %s expected",
-            #sorted, active, toCollect, api.money(expected)))
+        -- (posts that are not known yet are told between the active and the sold ones)
+        local unknownText = unknown > 0 and string.format("%d unknown  -  ", unknown) or ""
+        local soldText = soldCount > 0 and string.format("%d sold for %s", soldCount, api.money(toCollect)) or "0 sold"
+        status:SetText(string.format("%d posts  -  %d active  -  %s%s", #sorted, active, unknownText, soldText))
     end
 
     for _, header in ipairs(headers) do
@@ -415,7 +438,7 @@ local function build(api)
         firstRow = firstRow - delta
         refresh()
     end)
-    -- the times run: the page is made again once a minute, only while it is open
+    -- the times run: the page is made again every 30 seconds, only while it is open
     local ticker
     page:SetScript("OnShow", function()
         firstRow = 1
@@ -425,7 +448,13 @@ local function build(api)
         end
         refresh()
         if not ticker and C_Timer and C_Timer.NewTicker then
-            ticker = C_Timer.NewTicker(60, refresh)
+            ticker = C_Timer.NewTicker(30, function()
+                -- the game is asked again too: what changed while the page was open shows without closing it
+                if FWR.RefreshOwnedAuctions then
+                    FWR:RefreshOwnedAuctions()
+                end
+                refresh()
+            end)
         end
     end)
     page:SetScript("OnHide", function()
@@ -444,12 +473,16 @@ local function build(api)
     reset:SetScript("OnClick", function()
         sortKey, sortDescending = "state", false
         firstRow = 1
+        -- the game is asked again too (the Auction House answers a little later and the page is made again then)
+        if FWR.RefreshOwnedAuctions then
+            FWR:RefreshOwnedAuctions()
+        end
         refresh()
     end)
     reset:SetScript("OnEnter", function(button)
         GameTooltip:SetOwner(button, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Original order", 1, 0.82, 0)
-        GameTooltip:AddLine("Puts the list back in the order FarmWise chose: the gold that arrives soonest first", 0.72, 0.72, 0.72, false)
+        GameTooltip:AddLine("Refresh", 1, 0.82, 0)
+        GameTooltip:AddLine("Asks the Auction House again and puts the list back in the order FarmWise chose: the gold that arrives soonest first", 0.72, 0.72, 0.72, true)
         GameTooltip:Show()
     end)
     reset:SetScript("OnLeave", GameTooltip_Hide)
@@ -481,7 +514,7 @@ local function build(api)
     end)
     clearButton = clear
 
-    api.addPage({ key = "actions", title = "Actions", frame = page, onShow = refresh })
+    api.addPage({ key = "actions", title = "Auctions", frame = page, onShow = refresh })
     FWR:Subscribe("actionsChanged", refresh)
 end
 

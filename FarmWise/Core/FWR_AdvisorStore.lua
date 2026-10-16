@@ -1,6 +1,11 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
+-- The game moved these functions into C_Item / C_Spell. They are looked up here, for this file only: nothing
+-- is written to the game's own global names (that would taint the game's code).
+local GetItemInfoInstant = _G.GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
+local GetItemInfo = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo)
+
 -- Advisor store.
 -- Keeps farming statistics in the original FarmWise data format (FarmWiseDB) so that
 -- statistics collected by older FarmWise versions keep working without any conversion.

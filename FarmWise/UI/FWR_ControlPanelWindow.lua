@@ -1409,6 +1409,43 @@ local function createEnginePage(parent)
     return page
 end
 
+-- The page "FarmWise AH" of this window holds only the switch of the FarmWise Auction House: all its other
+-- settings are on the Options page of its tab, in the Auction House (FWR:BuildAuctionOptions below).
+local function createAuctionSwitchPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints(parent)
+
+    local config = (PAGE_CONFIG.selltab or {}).enabled or {}
+    local checkboxConfig = (PAGE_CONFIG.engine or {}).checkbox or {}
+
+    local line = createSection(page, "FarmWise AH")
+    local note = createNote(page, "The FarmWise Auction House is the tab of the Auction House where you post what you farmed. All its settings (posting time, price steps, price check, average price, what the list holds, the columns, the sales history) are on the Options page of that tab: open the Auction House, choose the FarmWise AH tab, then Options. What is scanned is set in the Scanner page of this window.", line, 0, 6)
+
+    local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
+    check:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -GAP_AFTER_NOTE)
+    check:SetHitRectInsets(0, 0, 0, 0)
+    if check.Text then
+        check.Text:ClearAllPoints()
+        check.Text:SetPoint("LEFT", check, "RIGHT", checkboxConfig.textOffsetX or 0, checkboxConfig.textOffsetY or 1)
+        check.Text:SetJustifyH("LEFT")
+        check.Text:SetText(config.label or "Add the FarmWise AH tab to the Auction House")
+    end
+    attachTooltip(check, config.label or "FarmWise AH", config.tooltip)
+
+    local function refresh()
+        check:SetChecked(getBooleanSetting({ "ah", "tabEnabled" }, true))
+        updateCheckboxVisual(check)
+    end
+    check:SetScript("OnClick", function(self)
+        setBooleanSetting({ "ah", "tabEnabled" }, self:GetChecked() == true)
+        updateCheckboxVisual(self)
+        FWR:Emit("sellTabEnabledChanged")
+    end)
+    page:SetScript("OnShow", refresh)
+    refresh()
+    return page
+end
+
 local function createAuctionPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints(parent)
@@ -1835,81 +1872,6 @@ local function createSellTabPage(parent)
     return page
 end
 
-local function createSellListPage(parent)
-    local page = CreateFrame("Frame", nil, parent)
-    page:SetAllPoints(parent)
-
-    local config = PAGE_CONFIG.selllist or {}
-    local titles = config.sections or {}
-    local checkboxConfig = (PAGE_CONFIG.engine or {}).checkbox or {}
-
-    local function styleCheck(check, text)
-        check:SetHitRectInsets(0, 0, 0, 0)
-        if check.Text then
-            check.Text:ClearAllPoints()
-            check.Text:SetPoint("LEFT", check, "RIGHT", checkboxConfig.textOffsetX or 0, checkboxConfig.textOffsetY or 1)
-            check.Text:SetJustifyH("LEFT")
-            check.Text:SetText(text or "")
-        end
-    end
-
-    local sourceLine = createSection(page, titles.source or "Source")
-    local note = createNote(page, config.note or "", sourceLine, 0, 6)
-
-    local farmedCheck = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-    farmedCheck:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -GAP_AFTER_NOTE)
-    styleCheck(farmedCheck, (config.onlyFarmed or {}).label)
-    attachTooltip(farmedCheck, (config.onlyFarmed or {}).label, (config.onlyFarmed or {}).tooltip)
-
-    local groupsLine = createSection(page, titles.groups or "Groups shown in the list", farmedCheck)
-
-    local groups = {
-        { key = "trade", setting = "tabShowTrade" },
-        { key = "consumables", setting = "tabShowConsumables" },
-        { key = "gems", setting = "tabShowGems" },
-        { key = "other", setting = "tabShowOther" },
-    }
-    local previous = groupsLine
-    for index, group in ipairs(groups) do
-        local check = CreateFrame("CheckButton", nil, page, "InterfaceOptionsCheckButtonTemplate")
-        check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, index == 1 and -GAP_AFTER_LINE or -GAP_NEXT_CHECK)
-        styleCheck(check, (config[group.key] or {}).label)
-        attachTooltip(check, (config[group.key] or {}).label, (config[group.key] or {}).tooltip)
-        group.check = check
-        previous = check
-    end
-
-    local function refresh()
-        farmedCheck:SetChecked(getBooleanSetting({ "ah", "tabOnlyFarmed" }, false))
-        updateCheckboxVisual(farmedCheck)
-        for _, group in ipairs(groups) do
-            group.check:SetChecked(getBooleanSetting({ "ah", group.setting }, true))
-            updateCheckboxVisual(group.check)
-        end
-    end
-
-    -- the tab makes its list again at once
-    local function changed()
-        refresh()
-        FWR:Emit("sellFiltersChanged")
-    end
-
-    farmedCheck:SetScript("OnClick", function(self)
-        setBooleanSetting({ "ah", "tabOnlyFarmed" }, self:GetChecked() == true)
-        changed()
-    end)
-    for _, group in ipairs(groups) do
-        group.check:SetScript("OnClick", function(self)
-            setBooleanSetting({ "ah", group.setting }, self:GetChecked() == true)
-            changed()
-        end)
-    end
-
-    page:SetScript("OnShow", refresh)
-    refresh()
-    return page
-end
-
 local function createInfoPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints(parent)
@@ -2160,8 +2122,7 @@ local function buildWindow()
     frame.Pages.tracking = createScrollPage(frame.contentInset, createTrackingPage)
     frame.Pages.engine = createScrollPage(frame.contentInset, createEnginePage)
     frame.Pages.auction = createScrollPage(frame.contentInset, createAuctionPage)
-    frame.Pages.selltab = createScrollPage(frame.contentInset, createSellTabPage)
-    frame.Pages.selllist = createScrollPage(frame.contentInset, createSellListPage)
+    frame.Pages.selltab = createScrollPage(frame.contentInset, createAuctionSwitchPage)
     frame.Pages.data = createScrollPage(frame.contentInset, createDataPage)
     frame.Pages.info = createScrollPage(frame.contentInset, createInfoPage)
     if FWR.CreateManualPage then

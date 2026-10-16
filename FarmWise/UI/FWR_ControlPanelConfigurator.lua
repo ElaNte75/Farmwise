@@ -55,8 +55,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             { key = "tracking", label = "Tracking" },
             { key = "engine", label = "Engine" },
             { key = "auction", label = "Scanner" },
-            { key = "selltab", label = "Auction House" },
-            { key = "selllist", label = "AH Tab List" },
+            { key = "selltab", label = "FarmWise AH" },
             { key = "data", label = "Data" },
             { key = "info", label = "Info" },
             { key = "manual", label = "Manual" },
@@ -75,8 +74,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             tracking = "Tracking filters, combined views, and current data scope.",
             engine = "Internal timers, reset behavior, and rarity filter settings.",
             auction = "The scan of the Auction House prices: what it reads, how deep and how often.",
-            selltab = "The FarmWise tab of the Auction House (AH Tab): how it posts and what it shows.",
-            selllist = "What the list of the AH Tab holds from your bags.",
+            selltab = "The switch of the FarmWise Auction House tab. Its own settings are on its Options page, in the Auction House.",
             data = "Saved data tools.",
             info = "Addon commands, main window controls, and quick usage notes.",
             manual = "How the parts of FarmWise work, chapter by chapter.",
@@ -339,11 +337,11 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             },
             history = {
                 label = "Record my sales in the History page",
-                tooltip = "FarmWise counts what you sell: when you take the gold of a sale (or the items of an expired auction) from your mailbox, it is added to the History page of the FarmWise tab, with what you earned, the average price and how much of what you posted was sold. Nothing is counted for what happened before this was switched on. Switched off, nothing is recorded and the page is not shown; what was recorded is kept.",
+                tooltip = "FarmWise counts what you sell: when you take the gold of a sale (or the items of an expired auction) from your mailbox, it is added to the History page of the FarmWise AH tab, with what you earned, the average price and how much of what you posted was sold. Nothing is counted for what happened before this was switched on. Switched off, nothing is recorded and the page is not shown; what was recorded is kept.",
             },
             enabled = {
-                label = "Add the FarmWise tab to the Auction House",
-                tooltip = "Adds a FarmWise tab next to Buy, Sell and Auctions, where you sell the materials you farmed. Switched off, nothing of it is added to the Auction House (for example if you use another addon for selling), and the automatic scan follows the options of the Scanner page.",
+                label = "Add the FarmWise AH tab to the Auction House",
+                tooltip = "Adds the FarmWise AH tab next to Buy, Sell and Auctions, where you sell the materials you farmed. Switched off, nothing of it is added to the Auction House (for example if you use another addon for selling), and the automatic scan follows the options of the Scanner page.",
             },
             durationTitle = "Post for:",
             durations = {
@@ -364,12 +362,16 @@ FWR.UI_CONFIG.ControlPanelWindow = {
                 tooltip = "Post waits while the price to post is unusually low against where most of the listings are, and the first + goes straight to the lowest usual price. An item can differ: right-click it in the tab.",
             },
             tooltips = {
-                label = "Show tooltips in the FarmWise tab",
-                tooltip = "The small windows that explain what you point at in the FarmWise tab (the price, the trend, Post, the filters of an item). Off: none of them is shown.",
+                label = "Show tooltips in the FarmWise AH tab",
+                tooltip = "The small windows that explain what you point at in the FarmWise AH tab (the price, the trend, Post, the filters of an item). Off: none of them is shown.",
+            },
+            openFirst = {
+                label = "Open the FarmWise AH tab when the Auction House opens",
+                tooltip = "The FarmWise AH tab is shown at once when you open the Auction House, instead of the game's first page. Off: the game's page is shown, and the tab is one click away.",
             },
             wheel = {
                 label = "Use the mouse wheel to post the next item",
-                tooltip = "While the FarmWise tab is open, the mouse wheel (up or down) posts the next item, as one click does. The game accepts one post for each click or scroll. The wheel is its own again when the tab is closed.",
+                tooltip = "While the FarmWise AH tab is open, the mouse wheel (up or down) posts the next item, as one click does. The game accepts one post for each click or scroll. The wheel is its own again when the tab is closed.",
             },
             wheelShift = {
                 label = "Post only while Shift is held down",

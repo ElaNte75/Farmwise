@@ -89,18 +89,18 @@ FWR.ManualChapters = {
             "Keep the Auction House open until it finishes. The tab of FarmWise shows the progress as a percentage, and it opens again when the scan is done.",
             "",
             "# Good to know",
-            "The Scanner and the FarmWise tab are independent. The tab asks the Auction House for its own fresh prices as you work, so it does not wait for a scan."
+            "The Scanner and the FarmWise AH tab are independent. The tab asks the Auction House for its own fresh prices as you work, so it does not wait for a scan."
         ),
     },
     {
-        title = "The FarmWise tab",
+        title = "The FarmWise AH tab",
         summary = "Selling from your bags in the Auction House",
         body = text(
-            "The FarmWise tab is next to Buy, Sell and Auctions. It lists what is in your bags that the Auction House sells by amount (materials, potions, food, runes and so on). Gear is not here, and neither is anything bound to you.",
+            "The FarmWise AH tab is next to Buy, Sell and Auctions. It lists what is in your bags that the Auction House sells by amount (materials, potions, food, runes and so on). Gear is not here, and neither is anything bound to you.",
             "",
             "# The columns",
             "In bags: how many you have.",
-            "Price: the price of one item. It starts at the lowest price now and follows it until you press + or -. One click changes it by a part of the lowest price: 5% unless you chose another step in Options > Auction House (from 1% to 20%). Right-click the price to go back to the lowest price.",
+            "Price: the price of one item. It starts at the lowest price now and follows it until you press + or -. One click changes it by a part of the lowest price: 5% unless you chose another step in FarmWise AH > Options (from 1% to 20%). Right-click the price to go back to the lowest price.",
             "Amount: how many to post. It starts as all you have, minus what you chose to keep.",
             "Value: what you receive for the whole amount, after the 5% cut.",
             "Trend: the arrow shows if the price went up, down or stayed the same in the last days. It needs a few days of data.",
@@ -111,7 +111,7 @@ FWR.ManualChapters = {
             "Post next (button at the bottom right) posts the next item that is ready. With \"Use the mouse wheel to post the next item\" on, you scroll instead of clicking. By default it needs Shift held down, so a scroll by accident never posts.",
             "",
             "# Posting time",
-            "Options > Auction House chooses 12, 24 or 48 hours for all items. An item can have its own time (right-click it). The deposit is shown in the tooltip of Post.",
+            "FarmWise AH > Options chooses 12, 24 or 48 hours for all items. An item can have its own time (right-click it). The deposit is shown in the tooltip of Post.",
             "",
             "# Left out items",
             "An item is left out of the list when you hid it, when you keep all of it in your bags, or when a vendor pays more than the Auction House (after its 5%). \"Show hidden items\" at the bottom lists them and says why. Their tooltip also tells it."
@@ -157,7 +157,7 @@ FWR.ManualChapters = {
             "A red ! after the name means the price is not right: too low (Post waits) or above the usual. Point at the grey Post and its tooltip says what is wrong.",
             "",
             "# Turning it on",
-            "Options > Auction House turns it on for all items, or turn it on for one item with a right-click."
+            "FarmWise AH > Options turns it on for all items, or turn it on for one item with a right-click."
         ),
     },
     {
@@ -167,7 +167,7 @@ FWR.ManualChapters = {
             "Sometimes you are not in a hurry. You would rather keep an item than sell it for less than you usually get. This option protects you from that.",
             "",
             "# What \"my average\" is",
-            "It is made of your last sales of the item in the History: the gold you posted for, divided by the pieces. How many sales is your choice: the slider under the option in Options > Auction House (5 to 30, 10 by default). A sale older than 30 days is never counted. It needs at least 3 sales and 20 pieces. Before that, it does nothing.",
+            "It is made of your last sales of the item in the History: the gold you posted for, divided by the pieces. How many sales is your choice: the slider under the option in FarmWise AH > Options (5 to 30, 10 by default). A sale older than 30 days is never counted. It needs at least 3 sales and 20 pieces. Before that, it does nothing.",
             "",
             "# What it does",
             "The price starts at the higher of two: the lowest price now, and your average. So when the market goes up you follow the market, and you never sell cheaper only because your old average was low.",
@@ -178,7 +178,7 @@ FWR.ManualChapters = {
             "If the market stays under your average, the item does not sell. The post runs out and you lose its deposit. That is the price of not selling cheap. Turn it off for an item when you want to sell it now.",
             "",
             "# Where to turn it on",
-            "For all items: Options > Auction House, \"Never sell below my history average price\" (the slider under it chooses how many sales make the average). For one item: right-click it in the tab. The tooltip of the price shows your average and the lowest price now, so you can compare.",
+            "For all items: FarmWise AH > Options, \"Never sell below my history average price\" (the slider under it chooses how many sales make the average). For one item: right-click it in the tab. The tooltip of the price shows your average and the lowest price now, so you can compare.",
             "",
             "# The red !",
             "A red ! appears when your average is far above the market: the item will wait."
@@ -188,7 +188,7 @@ FWR.ManualChapters = {
         title = "Sales history",
         summary = "What you sold, what you earned, how much sold",
         body = text(
-            "The History page (next to Sell in the FarmWise tab) keeps a list of what you sold. It starts when the option \"Record my sales in the History page\" is on. It cannot know what happened before.",
+            "The History page (next to Sell in the FarmWise AH tab) keeps a list of what you sold. It starts when the option \"Record my sales in the History page\" is on. It cannot know what happened before.",
             "",
             "# How a sale is counted",
             "A sale is counted when you take the gold from the sale mail in your mailbox. An auction that ran out is counted when you take its items back. Each mail is counted once. A sale that is still in the mailbox is not counted yet.",

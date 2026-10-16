@@ -18,6 +18,14 @@ if (-not (Test-Path -LiteralPath $TocPath)) {
     throw "Cannot find FarmWise.toc under $AddonDir"
 }
 
+# nothing diagnostic may go to the zip: the repo copy is made by "FarmWise Sync (game to repo).bat", which leaves it out
+$left = Get-ChildItem -LiteralPath $AddonDir -Recurse -Filter *.lua |
+    Select-String -CaseSensitive -Pattern '--\s*DEBUG(-BEGIN|-END)?\s*$', 'autoPostTrace', 'salesHistoryTrace', 'listingsRead', 'wheelStats'
+if ($left) {
+    $left | ForEach-Object { Write-Host ("  " + $_.Path + ":" + $_.LineNumber + "  " + $_.Line.Trim()) }
+    throw "Diagnostic code is in the addon folder. Run 'FarmWise Sync (game to repo).bat' first."
+}
+
 $DesktopDir = [Environment]::GetFolderPath("Desktop")
 Write-Host "Addon: $AddonDir"
 

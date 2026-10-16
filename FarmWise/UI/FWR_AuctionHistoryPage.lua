@@ -1,10 +1,10 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
--- The "History" page of the FarmWise tab of the Auction House: a second page next to "Sell", chosen with
+-- The "History" page of the FarmWise AH tab of the Auction House: a second page next to "Sell", chosen with
 -- small tabs at the top left of the page, in the way the game's own Auctions page has its "Auctions" and "Bids".
 -- It shows what the sales history (Core/FWR_SalesHistory.lua) has kept, one line per item, and every column
--- title sorts the list. The page is built when the FarmWise tab is (it is told by "auctionTabBuilt").
+-- title sorts the list. The page is built when the FarmWise AH tab is (it is told by "auctionTabBuilt").
 
 local GOLD = { 1, 0.82, 0 }
 local DAY = 86400
@@ -153,7 +153,17 @@ local function relativeDay(last)
     if not last or last <= 0 then
         return "-"
     end
-    local days = math.floor((time() - last) / DAY)
+    -- days of the calendar of the realm (the server): a sale of yesterday evening is "Yesterday" this morning, not
+    -- "Today". The moment is the same everywhere; only where the day changes depends on the clock of the realm.
+    local offset = 0
+    if GetGameTime then
+        local realmHour, realmMinute = GetGameTime()
+        local utc = date("!*t", time())   -- the realm clock against UTC: how far the realm is from UTC
+        if realmHour and realmMinute and utc then
+            offset = ((realmHour * 60 + realmMinute - (utc.hour * 60 + utc.min) + 720) % 1440 - 720) * 60
+        end
+    end
+    local days = math.floor((time() + offset) / DAY) - math.floor((last + offset) / DAY)
     if days <= 0 then
         return "Today"
     elseif days == 1 then
@@ -243,6 +253,7 @@ local function build(api)
     api.setMoneyCell = setMoneyCell
     api.rarityColor = rarityColor
     api.createSubTab = createSubTab
+    api.setTabSelected = setTabSelected
 
     ----------------------------------------------------------
     -- the two small tabs
@@ -472,7 +483,7 @@ local function build(api)
             for _, row in ipairs(rows) do
                 row:Hide()
             end
-            empty:SetText("The sales history is switched off (Options > Auction House).")
+            empty:SetText("The sales history is switched off (FarmWise AH > Options).")
             empty:Show()
             status:SetText("")
             return
@@ -595,19 +606,24 @@ local function build(api)
     -- switching between the two pages
     ----------------------------------------------------------
     local extraPages = {}   -- the pages added between Sell and History: { key, tab, frame, onShow }
+    local afterPages = {}   -- the pages added after History (the Options page): the same
+    local currentPage = "sell"
 
     local function showPage(which)
         local history = which == "history"
+        currentPage = which
         panel.fwHistoryShown = which ~= "sell"
         hist:SetShown(history)
         setTabSelected(sellTab, which == "sell")
         setTabSelected(historyTab, history)
-        for _, page in ipairs(extraPages) do
-            local on = page.key == which
-            page.frame:SetShown(on)
-            setTabSelected(page.tab, on)
-            if on and page.onShow then
-                pcall(page.onShow)
+        for _, list in ipairs({ extraPages, afterPages }) do
+            for _, page in ipairs(list) do
+                local on = page.key == which
+                page.frame:SetShown(on)
+                setTabSelected(page.tab, on)
+                if on and page.onShow then
+                    pcall(page.onShow)
+                end
             end
         end
         if history then
@@ -620,26 +636,51 @@ local function build(api)
         end
     end
 
+    -- The pages that depend on the history (History, Actions) are there when the history is on. Sell, and the
+    -- pages after History (Options), are always there: the options must be reachable also when the history is off.
     local function applyEnabled()
         local on = FWR.IsSalesHistoryEnabled and FWR:IsSalesHistoryEnabled()
-        sellTab:SetShown(on)
-        historyTab:SetShown(on)
+        sellTab:SetShown(true)
+        historyTab:SetShown(on == true)
         for _, page in ipairs(extraPages) do
-            page.tab:SetShown(on)
+            page.tab:SetShown(on == true)
+        end
+        for _, page in ipairs(afterPages) do
+            page.tab:SetShown(true)
         end
         if not on then
-            showPage("sell")
+            local needsHistory = currentPage == "history"
+            for _, page in ipairs(extraPages) do
+                if page.key == currentPage then
+                    needsHistory = true
+                end
+            end
+            if needsHistory then
+                showPage("sell")
+            end
         end
     end
 
-    -- another page between Sell and History: spec = { key, title, frame, onShow }
+    -- another page: spec = { key, title, frame, onShow, after }. By default it goes between Sell and History;
+    -- with after = true it goes after History.
     api.addPage = function(spec)
         local tab = createSubTab(panel, spec.title)
-        local last = #extraPages > 0 and extraPages[#extraPages].tab or sellTab
-        tab:SetPoint("LEFT", last, "RIGHT", 4, 0)
-        historyTab:ClearAllPoints()
-        historyTab:SetPoint("LEFT", tab, "RIGHT", 4, 0)
-        extraPages[#extraPages + 1] = { key = spec.key, tab = tab, frame = spec.frame, onShow = spec.onShow }
+        if spec.after then
+            local last = #afterPages > 0 and afterPages[#afterPages].tab or historyTab
+            tab:SetPoint("LEFT", last, "RIGHT", 4, 0)
+            afterPages[#afterPages + 1] = { key = spec.key, tab = tab, frame = spec.frame, onShow = spec.onShow }
+        else
+            local last = #extraPages > 0 and extraPages[#extraPages].tab or sellTab
+            tab:SetPoint("LEFT", last, "RIGHT", 4, 0)
+            historyTab:ClearAllPoints()
+            historyTab:SetPoint("LEFT", tab, "RIGHT", 4, 0)
+            -- the pages after History follow it
+            if afterPages[1] then
+                afterPages[1].tab:ClearAllPoints()
+                afterPages[1].tab:SetPoint("LEFT", historyTab, "RIGHT", 4, 0)
+            end
+            extraPages[#extraPages + 1] = { key = spec.key, tab = tab, frame = spec.frame, onShow = spec.onShow }
+        end
         tab:SetScript("OnClick", function()
             showPage(spec.key)
         end)
@@ -655,15 +696,17 @@ local function build(api)
         showPage("history")
     end)
 
-    -- every time the FarmWise tab is opened it starts on the Sell page
+    -- every time the FarmWise AH tab is opened it starts on the Sell page
     panel:HookScript("OnShow", function()
         showPage("sell")
         applyEnabled()
     end)
     panel:HookScript("OnHide", function()
         hist:Hide()
-        for _, page in ipairs(extraPages) do
-            page.frame:Hide()
+        for _, list in ipairs({ extraPages, afterPages }) do
+            for _, page in ipairs(list) do
+                page.frame:Hide()
+            end
         end
         panel.fwHistoryShown = false
     end)

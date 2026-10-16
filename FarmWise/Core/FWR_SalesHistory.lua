@@ -1,6 +1,11 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
+-- The game moved these functions into C_Item / C_Spell. They are looked up here, for this file only: nothing
+-- is written to the game's own global names (that would taint the game's code).
+local GetItemInfoInstant = _G.GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
+local GetItemInfo = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo)
+
 -- Sales history of the Auction House.
 --
 -- What it keeps, per item and per realm (FarmWiseDB._sales[realm][key]):
@@ -33,6 +38,8 @@ local MAX_ATTACHMENTS = _G.ATTACHMENTS_MAX_RECEIVE or 16
 
 local lastTake = -1000
 local snapshot            -- the units of the mailbox, as of the last look (nil: not looked at yet)
+-- the list of the mailbox is in only after the game has said so (MAIL_INBOX_UPDATE) since the mailbox opened
+local inboxLoaded = false
 local looking = false     -- a look is already waiting
 local pendingPost         -- the last post asked for, until the game says it was created
 
@@ -301,6 +308,20 @@ local function useUpCaptured(unit)
     end
 end
 
+-- When a sale happened. The mail of a sale lives 30 days from the moment it came (within an hour of the sale), so
+-- the days it has left tell when it came: taking the gold the next day does not make it a sale of the next day.
+local MAIL_LIFE_SECONDS = 30 * 86400
+
+local function saleMoment(unit, now)
+    if unit.expiry then
+        local arrived = unit.expiry - MAIL_LIFE_SECONDS
+        if arrived <= now and arrived > now - 31 * 86400 then
+            return arrived
+        end
+    end
+    return now
+end
+
 local function countUnit(unit)
     local when = time()
     if unit.kind == "sale" then
@@ -317,12 +338,15 @@ local function countUnit(unit)
         entry.gross = entry.gross + unit.gross
         entry.net = entry.net + math.max(0, unit.gross - unit.cut)
         entry.sales = entry.sales + 1
-        entry.last = math.max(entry.last or 0, when)
+        -- when it really happened: what the Actions ledger saw, else the age of the mail, else now
+        local soldAt = (FWR.GetActionSaleMoment and FWR:GetActionSaleMoment(itemID, unit.name, unit.count))
+            or saleMoment(unit, when)
+        entry.last = math.max(entry.last or 0, soldAt)
         -- the last sales (time, pieces, gold before the cut) are what the average price is made of
         if type(entry.recent) ~= "table" then
             entry.recent = {}
         end
-        entry.recent[#entry.recent + 1] = { t = when, q = unit.count, g = unit.gross }
+        entry.recent[#entry.recent + 1] = { t = soldAt, q = unit.count, g = unit.gross }
         while #entry.recent > RECENT_SALES do
             table.remove(entry.recent, 1)
         end
@@ -456,6 +480,10 @@ local function look()
     if changed and FWR.Emit then
         FWR:Emit("salesHistoryChanged")
     end
+
+    -- the Actions page learns from the mails how its posts ended (after the counting above: it still needs its
+    -- lines to date the sales that were counted)
+    FWR:Emit("auctionMailSeen", current, inboxLoaded)
 end
 
 local function lookSoon()
@@ -556,6 +584,11 @@ for _, name in ipairs({ "TakeInboxMoney", "TakeInboxItem", "AutoLootMailItem" })
     end
 end
 
+-- the mailbox is open now / how many times it was opened (to leave what was taken in the books for a while after
+-- it is closed: the game still answers the takes of the last moment)
+local mailOpen = false
+local mailVisit = 0
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("MAIL_SHOW")
 events:RegisterEvent("MAIL_INBOX_UPDATE")
@@ -563,19 +596,42 @@ events:RegisterEvent("MAIL_CLOSED")
 events:RegisterEvent("AUCTION_HOUSE_AUCTION_CREATED")
 events:SetScript("OnEvent", function(_, event)
     if event == "MAIL_SHOW" then
+        mailOpen = true
+        mailVisit = mailVisit + 1
+        inboxLoaded = false
         snapshot = nil
         wipe(captured)
         if enabled() then
             pcall(learnNames)
             lookSoon()
+            -- an empty mailbox may not say MAIL_INBOX_UPDATE: a moment later the list is known all the same
+            C_Timer.After(1.5, function()
+                if not inboxLoaded and _G.MailFrame and _G.MailFrame:IsShown() then
+                    inboxLoaded = true
+                    lookSoon()
+                end
+            end)
         end
     elseif event == "MAIL_INBOX_UPDATE" then
+        if mailOpen then
+            inboxLoaded = true
+        end
         if enabled() then
             lookSoon()
         end
     elseif event == "MAIL_CLOSED" then
-        snapshot = nil
-        wipe(captured)
+        mailOpen = false
+        inboxLoaded = false
+        -- Gold taken a moment before the mailbox was closed is still being answered by the game (the mail
+        -- leaves the list a little later): the looks go on, and the books are cleared only after a while, if the
+        -- mailbox was not opened again.
+        local visit = mailVisit
+        C_Timer.After(20, function()
+            if not mailOpen and visit == mailVisit then
+                snapshot = nil
+                wipe(captured)
+            end
+        end)
     elseif event == "AUCTION_HOUSE_AUCTION_CREATED" then
         if pendingPost and GetTime() - pendingPost.at < 60 then
             local post = pendingPost

@@ -1,7 +1,7 @@
 ﻿## Interface: 120100
 ## Title: FarmWise
 ## Notes: Farm smarter, zone by zone
-## Version: 4.3.42
+## Version: 4.4.42
 ## Author: ChrGeo/
 ## SavedVariables: FarmWiseDB, FarmWiseReforgedDB, FarmWiseReforgedSettingsDB
 
@@ -53,4 +53,5 @@ UI/FWR_SellFilterMenu.lua
 UI/FWR_AuctionSellTab.lua
 UI/FWR_AuctionHistoryPage.lua
 UI/FWR_AuctionActionsPage.lua
+UI/FWR_AuctionOptionsPage.lua
 FarmWiseReforged.lua

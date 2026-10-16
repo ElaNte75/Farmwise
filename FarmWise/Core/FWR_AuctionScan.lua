@@ -1,6 +1,10 @@
 local FWR = FarmWiseReforged or {}
 FarmWiseReforged = FWR
 
+-- The game moved these functions into C_Item / C_Spell. They are looked up here, for this file only: nothing
+-- is written to the game's own global names (that would taint the game's code).
+local GetItemInfoInstant = _G.GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
+
 -- Auction House scan.
 -- Reads the lowest price of every trade good (or of every item, when the whole-Auction-House option
 -- is on) straight from the Auction House and stores it in FarmWiseDB._ah, which the Advisor
@@ -524,6 +528,11 @@ local function autoScanIsDue(self)
     end
     local age = self:GetAuctionSyncAgeSeconds()
     return self:GetAuctionScanCooldownSeconds() == 0 and (age == nil or age >= self:GetAuctionFreshnessMinutes() * 60)
+end
+
+-- A scan is running, is about to start, or is due and will start by itself (the FarmWise tab waits for it).
+function FWR:IsAuctionScanComing()
+    return scan.running == true or scan.pendingStart == true or autoScanIsDue(self)
 end
 
 -- While the Auction House stays open the prices get old: as soon as they are older than the chosen interval
