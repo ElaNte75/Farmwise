@@ -648,7 +648,7 @@ end
 local function getCurrentZoneContext()
     local realZone = normalizeZoneText(type(GetRealZoneText) == "function" and GetRealZoneText() or nil)
     local zone = normalizeZoneText(type(GetZoneText) == "function" and GetZoneText() or nil)
-    local subZone = normalizeZoneText(type(GetSubZoneText) == "function" and GetSubZoneText() or nil)
+    local subZone = normalizeZoneText(FWR:GetAreaSubZoneText())
 
     local resolvedZone = realZone or zone
     if resolvedZone == nil and subZone ~= nil then

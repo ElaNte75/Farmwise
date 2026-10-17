@@ -92,6 +92,7 @@ FWR.DEFAULT_SETTINGS = {
         tabWheel = false,       -- the mouse wheel posts the next item, while the tab is open
         tabWheelShift = true,   -- ... but only while Shift is held (so a scroll by accident posts nothing)
         tabTooltips = true,     -- the tooltips of the tab
+        tabVendorCoin = true,   -- a gold coin on the items in the bags that a vendor pays more for than the Auction House
         tabOpenFirst = true,    -- the FarmWise tab is the page that is shown when the Auction House opens
         tabEnabled = true,      -- the tab is there at all (off: none of what it brings is on)
         tabPostTime = 1,        -- 1 = 12 hours, 2 = 24 hours, 3 = 48 hours

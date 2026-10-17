@@ -529,6 +529,32 @@ do
         tostring(last and (last - soldMoment)))
 end
 
+section("S4e. The mail is taken before the Auction House is opened again")
+freshPlayer()
+openAH()
+post(1, 9)
+local m2 = post(4, 8)
+closeAH()
+step(3600)
+sell(m2, 8)
+step(13 * 3600)
+openMailbox()
+takeAllMail()
+step(2)
+closeMailbox()
+step(2)
+openAH()
+step(5)
+do
+    local counts = rowsByState()
+    local left = 0
+    for _, count in pairs(counts) do left = left + count end
+    check("S4e nothing is left after the mail was taken first", left == 0, "lines left: " .. tostring(left)
+        .. " (ended " .. tostring(counts.ended) .. ", sold " .. tostring(counts.sold) .. ", active "
+        .. tostring(counts.active) .. ")")
+end
+settle("S4e the books balance")
+
 section("S5. A post taken back (cancel) with the button of the page")
 freshPlayer()
 openAH()

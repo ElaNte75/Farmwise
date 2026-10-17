@@ -45,6 +45,7 @@ function FWR:GetSellTabSettings()
         enabled = ah.tabEnabled ~= false,
         tooltips = ah.tabTooltips ~= false,
         openFirst = ah.tabOpenFirst ~= false,
+        vendorCoin = ah.tabVendorCoin ~= false,
         wheel = ah.tabWheel == true,
         wheelShift = ah.tabWheelShift ~= false,   -- the wheel posts only while Shift is held
         onlyFarmed = ah.tabOnlyFarmed == true,

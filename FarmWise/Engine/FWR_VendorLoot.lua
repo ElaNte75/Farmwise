@@ -84,7 +84,7 @@ function FWR:HandleVendorLootMessage(message)
     end
 
     local zone = type(GetZoneText) == "function" and GetZoneText() or ""
-    local subzone = type(GetSubZoneText) == "function" and GetSubZoneText() or ""
+    local subzone = self:GetAreaSubZoneText()
 
     for _, entry in ipairs(self:ExtractLootEntries(message)) do
         local itemID = tonumber(entry.itemLink:match("item:(%d+)"))

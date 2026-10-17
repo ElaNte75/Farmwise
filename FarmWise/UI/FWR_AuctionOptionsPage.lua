@@ -478,6 +478,12 @@ local function build(api)
         trend.fwDefault = true
         local value = check(columnsCard, tabsConfig.showValue or {}, "tabShowValue", sellFiltersChanged)
         value.fwDefault = true
+
+        local bagsCard = newCard(category, "right", "Your bags", 100)
+        local coin = check(bagsCard, tabsConfig.vendorCoin or {}, "tabVendorCoin", function()
+            FWR:Emit("sellTabVendorCoinChanged")
+        end)
+        coin.fwDefault = true
         return category
     end
 

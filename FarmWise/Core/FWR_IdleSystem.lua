@@ -18,7 +18,7 @@ end
 local function getCurrentZoneInfo()
     local zone = normalizeText(type(GetRealZoneText) == "function" and GetRealZoneText() or nil)
         or normalizeText(type(GetZoneText) == "function" and GetZoneText() or nil)
-    local subzone = normalizeText(type(GetSubZoneText) == "function" and GetSubZoneText() or nil)
+    local subzone = normalizeText(FWR:GetAreaSubZoneText())
     if subzone == zone then
         subzone = nil
     end

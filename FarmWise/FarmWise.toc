@@ -7,6 +7,7 @@
 
 Core/FWR_Defaults.lua
 Core/FWR_Events.lua
+Core/FWR_AreaScope.lua
 Core/FWR_Storage.lua
 Data/FWR_StarterGuideData.lua
 Core/FWR_AdvisorStore.lua
@@ -50,6 +51,7 @@ UI/FWR_LauncherIcon.lua
 UI/FWR_AdvisorPanel.lua
 UI/FWR_PriceTooltip.lua
 UI/FWR_SellFilterMenu.lua
+UI/FWR_BagVendorCoin.lua
 UI/FWR_AuctionSellTab.lua
 UI/FWR_AuctionHistoryPage.lua
 UI/FWR_AuctionActionsPage.lua

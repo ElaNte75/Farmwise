@@ -365,8 +365,12 @@ FWR.UI_CONFIG.ControlPanelWindow = {
                 label = "Show tooltips in the FarmWise AH tab",
                 tooltip = "The small windows that explain what you point at in the FarmWise AH tab (the price, the trend, Post, the filters of an item). Off: none of them is shown.",
             },
+            vendorCoin = {
+                label = "Gold coin on items a vendor pays more for",
+                tooltip = "A small gold coin on the corner of the items in your bags that the FarmWise AH tab leaves out of the Sell list because a vendor pays more than the Auction House. The tooltip of the item tells how much each one pays. Off: no coin is drawn.",
+            },
             openFirst = {
-                label = "Open the FarmWise AH tab when the Auction House opens",
+                label = "Open the FarmWise AH tab first",
                 tooltip = "The FarmWise AH tab is shown at once when you open the Auction House, instead of the game's first page. Off: the game's page is shown, and the tab is one click away.",
             },
             wheel = {

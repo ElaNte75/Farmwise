@@ -74,7 +74,7 @@ local function getCurrentZoneName()
 end
 
 local function getCurrentSubZoneName()
-    local subZone = type(GetSubZoneText) == "function" and GetSubZoneText() or nil
+    local subZone = FWR:GetAreaSubZoneText()
     return normalizeText(subZone)
 end
 

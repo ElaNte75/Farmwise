@@ -336,6 +336,22 @@ local function countUnit(unit)
         end
         entry.sold = entry.sold + unit.count
         entry.gross = entry.gross + unit.gross
+        -- the price check: the pieces of a post that it made dearer, once they are sold, are what it saved (net)
+        if itemID then
+            local log = postLog()
+            local unitPrice = unit.gross / unit.count
+            local remaining = unit.count
+            for _, post in ipairs(log or {}) do
+                if remaining > 0 and post.id == itemID and post.gain and (post.left or 0) > 0
+                    and math.abs((post.unit or 0) - unitPrice) < 1 then
+                    local take = math.min(remaining, post.left)
+                    -- (after the 5% the Auction House keeps: what is really earned)
+                    entry.saved = (entry.saved or 0) + math.floor(take * post.gain * (1 - (tonumber(FWR.AUCTION_HOUSE_CUT) or 0.05)))
+                    post.left = post.left - take
+                    remaining = remaining - take
+                end
+            end
+        end
         entry.net = entry.net + math.max(0, unit.gross - unit.cut)
         entry.sales = entry.sales + 1
         -- when it really happened: what the Actions ledger saw, else the age of the mail, else now
@@ -541,7 +557,10 @@ local function logPost(post)
 
     local log = postLog()
     if log then
-        log[#log + 1] = { id = itemID, unit = post.unit, qty = post.quantity, t = time() }
+        -- gain: what the price check added to the price of one piece (see GetPriceCheckSavings); left: how many
+        -- of this post are not credited yet
+        log[#log + 1] = { id = itemID, unit = post.unit, qty = post.quantity, t = time(), gain = post.gain,
+            left = post.gain and post.quantity or nil }
         while #log > POST_LOG_LIMIT do
             table.remove(log, 1)
         end
@@ -558,7 +577,12 @@ if type(C_AuctionHouse) == "table" and type(C_AuctionHouse.PostCommodity) == "fu
         pcall(function()
             itemID = C_Item.GetItemID(location)
         end)
+        -- the FarmWise tab tells what its price check added to this post (before it asks for the post)
+        local note = FWR.PostGainNote
+        FWR.PostGainNote = nil
+        local gain = note and note.itemID == itemID and tonumber(note.perPiece) or nil
         pendingPost = {
+            gain = gain and gain > 0 and gain or nil,
             itemID = itemID,
             name = itemID and itemName(itemID) or nil,
             quantity = tonumber(quantity),
@@ -644,6 +668,18 @@ end)
 ------------------------------------------------------------
 -- What the window of the history asks for
 ------------------------------------------------------------
+
+-- What the price check made you earn: for each post it made dearer (the price you would have posted without it, up to
+-- the lowest usual price), the difference for each piece that was sold. Only what is sold counts. Copper.
+function FWR:GetPriceCheckSavings()
+    local total = 0
+    for _, entry in pairs(records() or {}) do
+        if type(entry) == "table" then
+            total = total + (tonumber(entry.saved) or 0)
+        end
+    end
+    return total
+end
 
 -- A list of lines, one per item: { key, itemID, name, sold, net, gross, sales, returned, cancelled, posted, last,
 -- rate (0-1 of what was settled, nil when nothing was), average (net of one piece) }

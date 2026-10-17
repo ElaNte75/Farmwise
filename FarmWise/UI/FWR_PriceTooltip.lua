@@ -8,7 +8,13 @@ local GetItemInfoInstant = _G.GetItemInfoInstant or (C_Item and C_Item.GetItemIn
 -- Adds the Auction House price (from the last FarmWise scan) to item tooltips, on a line that says
 -- "FarmWise" so it is clear where the number comes from.
 
-local LABEL = "|cffd7be6aFarmWise|r AH"
+-- the colours of what FarmWise adds to a tooltip: a strong orange-gold for its names, the yellow of the game's own
+-- titles for what it says
+local NAME_COLOR = "ff9d1f"
+local NAME_RGB = { 1, 0.616, 0.122 }
+local TEXT_RGB = { 1, 0.82, 0 }
+
+local LABEL = "|cff" .. NAME_COLOR .. "FarmWise|r AH"
 
 local GOLD_ICON = "|TInterface/MoneyFrame/UI-GoldIcon:0:0:2:0|t"
 local SILVER_ICON = "|TInterface/MoneyFrame/UI-SilverIcon:0:0:2:0|t"
@@ -103,9 +109,10 @@ local function addVendorInfo(tooltip, itemID)
     end
 
     tooltip:AddLine(" ")
-    tooltip:AddLine("FarmWise Info", 0.95, 0.82, 0.42)
-    tooltip:AddLine("Not listed in the AH Tab:", 1, 1, 1, false)
-    tooltip:AddLine("a vendor pays more than the Auction House", 1, 1, 1, false)
+    tooltip:AddLine("FarmWise Info", NAME_RGB[1], NAME_RGB[2], NAME_RGB[3])
+    tooltip:AddLine("Not listed in the AH Tab:", TEXT_RGB[1], TEXT_RGB[2], TEXT_RGB[3], false)
+    tooltip:AddLine("a vendor pays more than the Auction House", TEXT_RGB[1], TEXT_RGB[2], TEXT_RGB[3], false)
+    tooltip:AddLine(" ")
     tooltip:AddDoubleLine("Vendor", formatPrice(vendor), 0.8, 0.8, 0.8, 1, 1, 1)
     tooltip:AddDoubleLine("Auction House (after the 5% cut)", formatPrice(auction), 0.8, 0.8, 0.8, 1, 1, 1)
 end

@@ -23,8 +23,23 @@ one grows when settings or behaviour change.
   and is not known yet ("Ended") goes away as soon as the mailbox has been read.
 - History: a sale gets the day it really happened, not the day you took the gold from the mailbox. "Today" and
   "Yesterday" follow the clock of the realm.
+- The lists (Sell, Auctions, History) have the game's own scroll bar, thin, at the right.
+- Dungeons, raids, delves and other places you enter through a portal (and battlegrounds and arenas) are recorded
+  as one whole area, not by sub-zone. The open world works as before.
+- History: the line under the table now says what the price check made you earn (after the 5%), counted only on
+  what was sold. The old totals line is gone.
+- Bags: a small gold coin on the items that the Sell list leaves out because a vendor pays more than the Auction
+  House. The tooltip of the item tells the prices. It stays while the item is in your bags. A switch in
+  Options > Display turns it off.
+- The tooltip lines of FarmWise have a stronger colour and a space before the prices.
+- The FarmWise tab stands after the tabs of other addons (like Auctionator) and hides its page when you choose
+  theirs, and the other way round.
+- The quality marks next to the item names are a little bigger (the silver one) and centred on each other.
 
 **Fixed**
+- Auctions: when you take the mail before opening the Auction House, the posts it belongs to are no longer left
+  as "Ended".
+- Auctions: no more error when the game hides the text of a chat message after a fight.
 - The FarmWise tab no longer makes the game say "FarmWise has been blocked" when you right-click an item in your
   bags. The tab now lives in a frame of its own and does not write into the Auction House of the game.
 - FarmWise no longer writes its own copies of the game's item and spell functions.

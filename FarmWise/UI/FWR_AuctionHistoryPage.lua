@@ -311,6 +311,9 @@ local function build(api)
     list:SetPoint("RIGHT", panel.list, "RIGHT", 0, 0)
     list:SetHeight(api.visibleRows * api.rowHeight)
 
+    -- the scroll bar of the game, in the room kept at the right of the list (the page draws again when it moves)
+    local scrollBar
+
     -- the titles of the columns: they sort
     local headers = {}
     local function makeHeader(key, text, width, anchorRight, titleShift)
@@ -391,7 +394,7 @@ local function build(api)
 
         row.tier = row:CreateTexture(nil, "OVERLAY")
         row.tier:SetSize(TIER_W, TIER_H)
-        row.tier:SetPoint("LEFT", row, "LEFT", api.nameX + ITEM.width - TIER_W, 0)
+        row.tier:SetPoint("CENTER", row, "LEFT", api.nameX + ITEM.width - TIER_W / 2, 0)
         row.tier:Hide()
 
         for _, column in ipairs(COLUMNS) do
@@ -510,11 +513,8 @@ local function build(api)
 
         local maxFirst = math.max(1, #sorted - api.visibleRows + 1)
         firstRow = math.max(1, math.min(firstRow, maxFirst))
-
-        local totalSold, totalNet = 0, 0
-        for _, line in ipairs(sorted) do
-            totalSold = totalSold + line.sold
-            totalNet = totalNet + line.net
+        if scrollBar then
+            scrollBar.update(#sorted, firstRow)
         end
 
         for index = 1, api.visibleRows do
@@ -531,6 +531,7 @@ local function build(api)
                 if tier then
                     tierShown = pcall(function()
                         row.tier:SetAtlas(string.format("Professions-ChatIcon-Quality-12-Tier%d", tier))
+                        row.tier:SetSize(FWR.ITEM_COLUMN.tierSize(tier))
                     end)
                 end
                 row.tier:SetShown(tierShown)
@@ -562,7 +563,13 @@ local function build(api)
         else
             empty:Hide()
         end
-        status:SetText(string.format("%d items  -  %d sold  -  %s earned", #sorted, totalSold, money(api, totalNet)))
+        -- what the price check made you earn (only what was sold; all the time since the history began)
+        local saved = FWR.GetPriceCheckSavings and FWR:GetPriceCheckSavings() or 0
+        if saved > 0 then
+            status:SetText("The price check made you earn " .. money(api, saved) .. " more on what you sold")
+        else
+            status:SetText("")
+        end
     end
 
     -- the round arrow, where the Sell page has its own: the list goes back to the order we chose
@@ -596,6 +603,13 @@ local function build(api)
             refresh()
         end)
     end
+
+    scrollBar = api.addScrollBar and api.addScrollBar(hist, list, function(first)
+        if first ~= firstRow then
+            firstRow = first
+            refresh()
+        end
+    end)
 
     hist:SetScript("OnMouseWheel", function(_, delta)
         firstRow = firstRow - delta

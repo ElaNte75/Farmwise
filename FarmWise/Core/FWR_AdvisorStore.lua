@@ -94,7 +94,7 @@ end
 
 local function getLiveZone()
     local zone = type(GetZoneText) == "function" and GetZoneText() or ""
-    local subzone = type(GetSubZoneText) == "function" and GetSubZoneText() or ""
+    local subzone = FWR:GetAreaSubZoneText()
     if zone == nil or zone == "" then
         zone = "Unknown"
     end

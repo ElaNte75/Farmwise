@@ -259,6 +259,22 @@ local function collected(unit)
             end
         end
     end
+
+    -- The mail was taken before the page knew that the post was gone (the Auction House was closed and the line
+    -- still says "active"; with it open its list is the truth): the mail says that post is over, so its line goes. The post that ends first is the one
+    -- (if it was another post of the same item, the list of the game brings the line back when it is asked).
+    if (unit.kind == "sale" or unit.kind == "expired") and not ahOpen then
+        local pick, pickPosition
+        for position, record in ipairs(records) do
+            if record.state == "active" and sameItem(record, unit) and record.qty == (tonumber(unit.count) or 0)
+                and (not pick or (record.expires or math.huge) < (pick.expires or math.huge)) then
+                pick, pickPosition = record, position
+            end
+        end
+        if pick then
+            table.remove(records, pickPosition)
+        end
+    end
     changed()
 end
 
@@ -553,6 +569,11 @@ for _, name in ipairs({ "OWNED_AUCTIONS_UPDATED", "AUCTION_HOUSE_SHOW", "AUCTION
 end
 frame:SetScript("OnEvent", function(_, event, itemID)
     if event == "CHAT_MSG_SYSTEM" then
+        -- during a fight the game hides the text of chat messages ("secret" values): they cannot be read, so they
+        -- are left alone (the list of the Auction House tells the truth when it is asked)
+        if type(itemID) ~= "string" or (issecretvalue and issecretvalue(itemID)) then
+            return
+        end
         for _, entry in ipairs(CHAT_PATTERNS) do
             if type(itemID) == "string" and entry.pattern then
                 local captured = itemID:match(entry.pattern)

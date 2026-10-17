@@ -37,6 +37,7 @@ local GetItemIcon = _G.GetItemIcon or (C_Item and C_Item.GetItemIconByID)
 local ROW_HEIGHT = 20
 local VISIBLE_ROWS = 17
 local PANEL_PADDING = 8
+local SCROLL_GUTTER = 18      -- room at the right of the lists for the game's own scroll bar
 local PRICE_STEP_PERCENT = 5      -- the "+" and "-" buttons change the price by this much, if the option cannot be read
 local HOURS = { 12, 24, 48 }       -- the posting times; which one is used: the item's own, or the one for all
 local PRICE_QUEUE_SECONDS = 0.6   -- the game limits how fast prices can be asked for
@@ -58,8 +59,16 @@ local NAME_GAP = 6
 -- The item column is the same in the Sell, Actions and History pages, and it never changes its size: a long name
 -- is cut with "..." and the mark of the quality has a place of its own at the end of the column, so it is
 -- always seen. The other pages read these numbers from FWR.ITEM_COLUMN.
-local ITEM_WIDTH, TIER_W, TIER_H, TIER_GAP = 216, 14, 12, 3
+local ITEM_WIDTH, TIER_W, TIER_H, TIER_GAP = 216, 19, 17, 3
 FWR.ITEM_COLUMN = { x = NAME_X, width = ITEM_WIDTH, tierWidth = TIER_W, tierHeight = TIER_H, tierGap = TIER_GAP }
+-- the mark of the quality: the silver one (tier 1) is drawn bigger, the gold one (tier 2 and up: the materials
+-- of this expansion have two qualities, and the second is the gold one) keeps the small size
+function FWR.ITEM_COLUMN.tierSize(tier)
+    if tonumber(tier) and tier >= 2 then
+        return 14, 12
+    end
+    return TIER_W, TIER_H
+end
 local MARK_WIDTH = 14   -- one "!" after the name (it takes room from the name)
 local NUMBER_FONT = "Number13FontWhite"   -- numbers: a little smaller than the names (14)
 local TITLE_FONT = "GameFontHighlightSmall"
@@ -119,7 +128,7 @@ local function computeLayout(auctionHouseFrame)
     local itemWidth = ITEM_WIDTH
     local windowWidth = auctionHouseFrame and auctionHouseFrame.GetWidth and tonumber(auctionHouseFrame:GetWidth())
     if windowWidth and windowWidth > 0 and FWR.HISTORY_RIGHT_WIDTH then
-        local listWidth = windowWidth - 4 - 5 - 2 * PANEL_PADDING
+        local listWidth = windowWidth - 4 - 5 - 2 * PANEL_PADDING - SCROLL_GUTTER
         itemWidth = math.max(120, math.floor(listWidth - FWR.HISTORY_RIGHT_WIDTH - NAME_X))
     end
     FWR.ITEM_COLUMN.width = itemWidth
@@ -364,6 +373,7 @@ rebuildEntries = function()
     local previous = entryById
     entries, entryById = {}, {}
     hiddenCount = 0
+    local vendorItems = {}      -- what stays out of the list because a vendor pays more (a coin on it in the bags)
 
     for itemID, record in pairs(scanBags()) do
         local old = previous[itemID] or known[itemID]
@@ -399,6 +409,9 @@ rebuildEntries = function()
         end
         if leftOut then
             hiddenCount = hiddenCount + 1
+        end
+        if leftOut == "vendor" then
+            vendorItems[itemID] = true
         end
 
         if (leftOut ~= nil) == viewHidden then
@@ -454,6 +467,10 @@ rebuildEntries = function()
         end
     end
 
+    if FWR.SetBagVendorCoins then
+        FWR:SetBagVendorCoins(vendorItems)
+    end
+
     table.sort(entries, function(a, b)
         local first, second = string.lower(tostring(a.name)), string.lower(tostring(b.name))
         if first ~= second then
@@ -474,6 +491,62 @@ end
 ------------------------------------------------------------
 
 local refreshRows
+local scrollBar            -- the scroll bar of the list (nil when the game's template cannot be made)
+
+-- The scroll bar of the game itself (the same as in its own windows) for a list that shows a few rows of many.
+-- A hidden scroll box holds the position; the rows are still the pooled ones of each page. onChange(firstRow) is
+-- called when the bar is moved; the page calls update(total, firstRow) every time it draws.
+local function addScrollBar(parent, list, onChange)
+    local ok, bar = pcall(function()
+        local height = VISIBLE_ROWS * ROW_HEIGHT
+        local box = CreateFrame("Frame", nil, parent, "WowScrollBox")
+        box:SetPoint("TOPRIGHT", list, "TOPRIGHT", 0, 0)
+        box:SetSize(1, height)
+        box:EnableMouse(false)
+        local content = CreateFrame("Frame", nil, box)
+        content.scrollable = true
+        content:SetSize(1, 1)
+
+        local track = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
+        track:SetPoint("TOP", list, "TOP", 0, 0)
+        track:SetPoint("BOTTOM", list, "BOTTOM", 0, 0)
+        -- thinner than the game's own (its parts have a fixed size, so the whole bar is made smaller), and a
+        -- little to the right (the offset is in the units of the bar: 24 of them are 12 of the list)
+        track:SetScale(0.5)
+        track:SetPoint("LEFT", list, "RIGHT", 24, 0)
+        FWR.ScrollBarsMade = FWR.ScrollBarsMade or {}   -- (the diagnostic tool measures them)
+        FWR.ScrollBarsMade[#FWR.ScrollBarsMade + 1] = track
+        local view = CreateScrollBoxLinearView()
+        view:SetPanExtent(ROW_HEIGHT)
+        ScrollUtil.InitScrollBoxWithScrollBar(box, track, view)
+        if track.SetHideIfUnscrollable then
+            track:SetHideIfUnscrollable(true)
+        end
+
+        local busy = false
+        box:RegisterCallback("OnScroll", function()
+            if busy then
+                return
+            end
+            local offset = box:GetDerivedScrollOffset() or 0
+            onChange(math.floor(offset / ROW_HEIGHT + 0.5) + 1)
+        end)
+
+        return {
+            update = function(total, first)
+                busy = true
+                pcall(function()
+                    content:SetHeight(math.max(1, total * ROW_HEIGHT))
+                    box:FullUpdate(ScrollBoxConstants.UpdateImmediately)
+                    local range = math.max(0, total * ROW_HEIGHT - height)
+                    box:SetScrollPercentage(range > 0 and ((first - 1) * ROW_HEIGHT) / range or 0)
+                end)
+                busy = false
+            end,
+        }
+    end)
+    return ok and bar or nil
+end
 
 local function queuePrice(itemID)
     for _, queued in ipairs(priceQueue) do
@@ -925,7 +998,21 @@ local function postEntry(entry)
     -- What the game answers is whether the post NEEDS CONFIRMATION (not whether it worked): false: the auction
     -- is made, nothing more to do; true: the game asks "are you sure?" (AUCTION_HOUSE_POST_WARNING) and the post
     -- waits for the answer. Nothing at all (nil): the game did not take the call (for example it wants a click).
+    -- what the price check added to this price, for the History (the price you would have posted without it, up
+    -- to the lowest usual price; the difference of each piece that is sold is what it saved)
+    FWR.PostGainNote = nil
+    if entry.check and entry.usual and entry.lowest then
+        local base = startPrice(entry)
+        local zone, usualLowest = priceZone(entry, base)
+        if zone == "low" and usualLowest then
+            local gain = math.max(0, math.min(entry.price, usualLowest) - base)
+            if gain > 0 then
+                FWR.PostGainNote = { itemID = entry.itemID, perPiece = gain }
+            end
+        end
+    end
     local needsConfirmation = C_AuctionHouse.PostCommodity(location, duration, quantity, entry.price)
+    FWR.PostGainNote = nil
     if needsConfirmation == nil then
         postedNote = "The Auction House did not accept this post."
         refreshRows()
@@ -1210,7 +1297,7 @@ local function createRow(index)
     -- the mark of the quality: a place of its own at the end of the item column
     row.tier = row:CreateTexture(nil, "OVERLAY")
     row.tier:SetSize(TIER_W, TIER_H)
-    row.tier:SetPoint("LEFT", row, "LEFT", NAME_X + NAME_WIDTH - TIER_W, 0)
+    row.tier:SetPoint("CENTER", row, "LEFT", NAME_X + NAME_WIDTH - TIER_W / 2, 0)
     row.tier:Hide()
 
     local function place(region, column, yOffset, xOffset)
@@ -1502,6 +1589,9 @@ refreshRows = function()
 
     local maxFirst = math.max(1, #entries - VISIBLE_ROWS + 1)
     firstRow = math.max(1, math.min(firstRow, maxFirst))
+    if scrollBar then
+        scrollBar.update(#entries, firstRow)
+    end
 
     for index = 1, VISIBLE_ROWS do
         local row = rows[index]
@@ -1532,6 +1622,7 @@ refreshRows = function()
             if tier then
                 tierShown = pcall(function()
                     row.tier:SetAtlas(string.format("Professions-ChatIcon-Quality-12-Tier%d", tier))
+                    row.tier:SetSize(FWR.ITEM_COLUMN.tierSize(tier))
                 end)
             end
             row.tier:SetShown(tierShown)
@@ -1705,7 +1796,7 @@ local function buildPage(auctionHouseFrame)
     -- the strip behind the column titles
     local headerStrip = panel:CreateTexture(nil, "ARTWORK")
     headerStrip:SetPoint("TOPLEFT", PANEL_PADDING, -36)
-    headerStrip:SetPoint("RIGHT", panel, "RIGHT", -PANEL_PADDING, 0)
+    headerStrip:SetPoint("RIGHT", panel, "RIGHT", -(PANEL_PADDING + SCROLL_GUTTER), 0)
     headerStrip:SetHeight(21)
     local gradient = false
     if headerStrip.SetGradient and CreateColor then
@@ -1720,8 +1811,16 @@ local function buildPage(auctionHouseFrame)
     panel.headerStrip = headerStrip   -- the History page lines up with these, so its titles are at the same place
     panel.list = CreateFrame("Frame", nil, panel)
     panel.list:SetPoint("TOPLEFT", PANEL_PADDING, -58)
-    panel.list:SetPoint("RIGHT", panel, "RIGHT", -PANEL_PADDING, 0)
+    panel.list:SetPoint("RIGHT", panel, "RIGHT", -(PANEL_PADDING + SCROLL_GUTTER), 0)
     panel.list:SetHeight(VISIBLE_ROWS * ROW_HEIGHT)
+    -- the scroll bar of the game, in the room kept at the right of the list
+    scrollBar = addScrollBar(panel, panel.list,
+        function(first)
+            if first ~= firstRow then
+                firstRow = first
+                refreshRows()
+            end
+        end)
 
     for index = 1, VISIBLE_ROWS do
         rows[index] = createRow(index)
@@ -1933,7 +2032,56 @@ local function setTabLabel(label)
     end
 end
 
+-- Other addons that add a tab the same way (Auctionator and others use the shared library LibAHTab): the tabs are
+-- placed after theirs, and when one of theirs is chosen, ours goes away (and the other way round). Nothing of the
+-- game is written to: only what the library of those addons gives is read.
+local tabAnchorSpec            -- how our tab is placed after the last tab: { base, point, relativePoint, x, y }
+local otherTabsHooked = false
+
+local function otherTabs()
+    local lib = _G.LibStub and _G.LibStub("LibAHTab-1-0", true)
+    local state = lib and lib.internalState
+    return lib, state and state.Tabs or nil
+end
+
+local function placeTab()
+    if not (ourTab and tabAnchorSpec and tabAnchorSpec.base) then
+        return
+    end
+    -- after the last tab of the game, and after the tabs of other addons when there are some: nothing of theirs is
+    -- moved. (The tabs are put in a row on the bottom edge of the window; with many of them the last ones can go
+    -- past the right edge of the window, and they still work there.)
+    local _, others = otherTabs()
+    local anchor = (others and #others > 0 and others[#others]) or tabAnchorSpec.base
+    if ourTab.fwAnchoredTo ~= anchor then
+        ourTab.fwAnchoredTo = anchor
+        ourTab:ClearAllPoints()
+        ourTab:SetPoint(tabAnchorSpec.point, anchor, tabAnchorSpec.relativePoint, tabAnchorSpec.x, tabAnchorSpec.y)
+    end
+end
+
+local function hideOurPage()
+    if panel and panel:IsShown() then
+        panel:Hide()
+    end
+    if ourTab then
+        PanelTemplates_DeselectTab(ourTab)
+    end
+end
+
+local function watchOtherTabs()
+    if otherTabsHooked then
+        return
+    end
+    local lib, others = otherTabs()
+    if lib and others and type(lib.SetSelected) == "function" then
+        otherTabsHooked = pcall(hooksecurefunc, lib, "SetSelected", hideOurPage)
+    end
+end
+
 local function refreshTab()
+    placeTab()
+    watchOtherTabs()
     local frame = _G.AuctionHouseFrame
     if not ourTab or type(frame) ~= "table" then
         return
@@ -2044,6 +2192,8 @@ local function install()
         numberFont = NUMBER_FONT,
         titleFont = TITLE_FONT,
         applyWheel = applyWheelBinding,
+        addScrollBar = addScrollBar,
+        scrollGutter = SCROLL_GUTTER,
     }
     FWR:Emit("auctionTabBuilt", FWR.AuctionTab)
 
@@ -2070,10 +2220,11 @@ local function install()
         -- to the one before it (a measured example: TOPLEFT to TOPRIGHT, 3 pixels to the right)
         local point, _, relativePoint, x, y = lastTab:GetPoint(1)
         if point and relativePoint and point ~= "BOTTOMLEFT" then
-            tab:SetPoint(point, lastTab, relativePoint, x or 3, y or 0)
+            tabAnchorSpec = { base = lastTab, point = point, relativePoint = relativePoint, x = x or 3, y = y or 0 }
         else
-            tab:SetPoint("TOPLEFT", lastTab, "TOPRIGHT", 3, 0)
+            tabAnchorSpec = { base = lastTab, point = "TOPLEFT", relativePoint = "TOPRIGHT", x = 3, y = 0 }
         end
+        placeTab()
     end
     PanelTemplates_DeselectTab(tab)
     panel:Hide()
@@ -2083,6 +2234,14 @@ local function install()
     tab:SetScript("OnClick", function()
         frame:SetDisplayMode({})
         frame.displayMode = nil
+        -- the pages of the tabs of other addons are put away (they do not know of ours)
+        local _, others = otherTabs()
+        for _, other in ipairs(others or {}) do
+            if other.frameRef and other.frameRef.Hide then
+                other.frameRef:Hide()
+            end
+            PanelTemplates_DeselectTab(other)
+        end
         for _, other in ipairs(frame.Tabs) do
             PanelTemplates_DeselectTab(other)
         end
@@ -2193,6 +2352,9 @@ events:SetScript("OnEvent", function(_, event, ...)
         openFirstPending = true
         if C_Timer and C_Timer.After then
             C_Timer.After(0.2, tryOpenFirst)
+            -- tabs of other addons come a moment after the window opens: ours is placed after them
+            C_Timer.After(1, refreshTab)
+            C_Timer.After(3, refreshTab)
         end
     elseif event == "AUCTION_HOUSE_CLOSED" then
         openFirstPending = false

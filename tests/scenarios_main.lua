@@ -300,6 +300,40 @@ check("a step of 0 becomes 1", FWR:GetSellTabSettings().priceStep == 1)
 FarmWiseReforgedSettingsDB.ah.tabPriceStep = nil
 check("nothing set is 5", FWR:GetSellTabSettings().priceStep == 5)
 
+section("Areas: the sub-zone is left out inside a dungeon, a delve, a raid, a battleground")
+local realInInstance = IsInInstance
+IsInInstance = nil
+check("open world (no answer from the game): the sub-zone is used", FWR:GetAreaSubZoneText() == "The Waking Shores")
+IsInInstance = function() return false, "none" end
+check("open world: the sub-zone is used", FWR:GetAreaSubZoneText() == "The Waking Shores")
+for _, kind in ipairs({ "party", "raid", "scenario", "pvp", "arena" }) do
+    IsInInstance = function() return true, kind end
+    check("inside '" .. kind .. "' the sub-zone is left out", FWR:GetAreaSubZoneText() == "")
+end
+IsInInstance = realInInstance
+
+section("Price check: what it made you earn, counted when the pieces are sold")
+resetHistory()
+check("nothing yet", FWR:GetPriceCheckSavings() == 0)
+FWR.PostGainNote = { itemID = 236965, perPiece = 2000 }
+post(236965, 10, 13300)
+post(242639, 5, 9800)             -- a post the price check did not touch
+inbox = { sale("Bright Linen", 6, 79800, 3990), sale("Practically Pork", 5, 49000, 2450) }
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(3)
+check("6 pieces sold: 6 x 2000, less the 5%", FWR:GetPriceCheckSavings() == 11400, FWR:GetPriceCheckSavings())
+inbox = { sale("Bright Linen", 4, 53200, 2660) }
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(3)
+check("the other 4 sold: 10 x 2000 less the 5% in all", FWR:GetPriceCheckSavings() == 19000, FWR:GetPriceCheckSavings())
+inbox = { sale("Bright Linen", 3, 39900, 1995) }
+H.fire("MAIL_SHOW")
+H.advance(0.5)
+openAll(3)
+check("a later sale of the same price is not credited again", FWR:GetPriceCheckSavings() == 19000, FWR:GetPriceCheckSavings())
+
 print(string.format("\nRESULT: %d passed, %d failed, %d runtime error(s) caught", H.results.pass, H.results.fail, #H.results.errors))
 for i, e in ipairs(H.results.errors) do
     if i <= 15 then print("  runtime error: " .. tostring(e):sub(1, 500)) end
