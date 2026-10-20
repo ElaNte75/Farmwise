@@ -93,7 +93,16 @@ function FWR:ApplyMainWindowPresentation(inCombat)
     end
 
     local wanted = ui.mainWindowVisible ~= false
-    local minimized = ui.mainWindowMinimized == true or (inCombat and ui.hideMainWindowInCombat == true)
+    -- Minimized by the fight: it goes back after the fight only when "Open it again after combat" is on. What
+    -- you minimized yourself (the window's own button) is never opened for you.
+    if ui.hideMainWindowInCombat ~= true then
+        self.minimizedByCombat = nil
+    elseif inCombat then
+        self.minimizedByCombat = true
+    elseif ui.restoreMainWindowAfterCombat == true then
+        self.minimizedByCombat = nil
+    end
+    local minimized = ui.mainWindowMinimized == true or self.minimizedByCombat == true
     local mini = controls.miniButton
 
     if wanted and not minimized then
@@ -125,8 +134,16 @@ function FWR:ApplyMainWindowPresentation(inCombat)
     end
 end
 
+-- the small button the window is turned into (nil before the window exists): the floating loot text rises from it
+function FWR:GetMainWindowMiniButton()
+    return controls.miniButton
+end
+
 function FWR:SetMainWindowMinimized(minimized)
     getUi().mainWindowMinimized = minimized == true
+    if minimized ~= true then
+        self.minimizedByCombat = nil   -- you opened it yourself
+    end
     touch()
     self:ApplyMainWindowPresentation()
 end

@@ -79,6 +79,22 @@ function FWR:HandleAreaChanged(newKey)
         return
     end
 
+    -- What is gathered is counted for the whole zone (the context of the zone, with no sub-zone), so a move
+    -- between the whole zone and a sub-zone of the same zone leaves nothing: no reset. Only leaving the zone
+    -- resets the area of the whole zone.
+    local oldZone, oldSubzone, characterKey = self:ParseContextKey(previousKey)
+    local newZone, newSubzone = self:ParseContextKey(newKey)
+    local wholeZoneArea = mode == "subzone" and oldZone and (oldZone .. "::") or nil
+    if mode == "subzone" and newZone then
+        pending[newZone .. "::"] = nil   -- being back in the zone cancels the waiting reset of its gathering
+    end
+    if mode == "subzone" and oldZone and oldZone == newZone and ((oldSubzone or "") == "" or (newSubzone or "") == "") then
+        if newArea then
+            pending[newArea] = nil
+        end
+        return
+    end
+
     if newArea then
         pending[newArea] = nil   -- being back in an area cancels its waiting reset
     end
@@ -90,6 +106,19 @@ function FWR:HandleAreaChanged(newKey)
     pending[oldArea] = { scope = oldScope, number = departures, timerRunning = false }
     if not inCombat then
         startDelay(self, oldArea)
+    end
+
+    -- leaving the zone: what was gathered in it (counted for the whole zone) starts over too
+    if wholeZoneArea and oldZone ~= newZone and wholeZoneArea ~= oldArea then
+        departures = departures + 1
+        pending[wholeZoneArea] = {
+            scope = { mode = "subzone", characterKey = characterKey, zone = oldZone, subzone = "" },
+            number = departures,
+            timerRunning = false,
+        }
+        if not inCombat then
+            startDelay(self, wholeZoneArea)
+        end
     end
 end
 

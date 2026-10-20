@@ -297,9 +297,11 @@ local function formatCopperText(copper)
     local gold = math.floor(copper / 10000)
     local silver = math.floor((copper % 10000) / 100)
     local rest = copper % 100
-    local g = "|TInterface/MoneyFrame/UI-GoldIcon:12:12:2:0|t"
-    local s = "|TInterface/MoneyFrame/UI-SilverIcon:12:12:2:0|t"
-    local c = "|TInterface/MoneyFrame/UI-CopperIcon:12:12:2:0|t"
+    -- the coins of the game's newer pictures (the same as in the Auction House tab): all three of one size and
+    -- one centre, so that they stand in line with the digits
+    local g = "|A:Coin-Gold:12:10:2:0|a"
+    local s = "|A:Coin-Silver:12:10:2:0|a"
+    local c = "|A:Coin-Copper:12:10:2:0|a"
 
     if gold > 0 then
         return string.format("%d%s %02d%s %02d%s", gold, g, silver, s, rest, c)

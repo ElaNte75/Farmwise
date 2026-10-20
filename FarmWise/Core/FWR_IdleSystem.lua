@@ -189,6 +189,9 @@ function FWR:BeginIdleGatherCast(owner, options)
     if not isGatherOwner(owner) then
         return false
     end
+    if self.NoteGatheringActivity then
+        self:NoteGatheringActivity()   -- gathering is counted for the whole zone
+    end
 
     local now = self:Now()
     self:ApplyIdleElapsed(now)
@@ -232,6 +235,9 @@ function FWR:ConfirmIdleGatherSuccess(owner, durationSeconds, options)
     owner = normalizeTriggerOwner(owner)
     if not isGatherOwner(owner) then
         return false
+    end
+    if self.NoteGatheringActivity then
+        self:NoteGatheringActivity()
     end
 
     local now = self:Now()

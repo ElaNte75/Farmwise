@@ -454,6 +454,44 @@ local function build(api)
     status:SetPoint("BOTTOMLEFT", panel.status, "BOTTOMLEFT", 0, 0)
     status:SetJustifyH("LEFT")
 
+    -- point at the line of the price check: the items behind the total, the biggest first
+    local statusHit = CreateFrame("Frame", nil, hist)
+    statusHit:SetAllPoints(status)
+    statusHit:EnableMouse(true)
+    statusHit:Hide()
+    statusHit:SetScript("OnEnter", function(self)
+        if not (FWR.GetPriceCheckBreakdown and GameTooltip) then
+            return
+        end
+        local list = FWR:GetPriceCheckBreakdown()
+        if #list == 0 then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("What the price check brought you", 1, 0.62, 0.12)
+        GameTooltip:AddLine("The extra gold, after the 5%, on what sold.", 1, 0.82, 0, true)
+        GameTooltip:AddLine(" ")
+        local LIMIT = 15
+        local shown = {}
+        for index = 1, math.min(#list, LIMIT) do
+            shown[#shown + 1] = list[index].saved
+        end
+        local digits = FWR.GoldDigitsOf and FWR:GoldDigitsOf(shown) or 1
+        for index = 1, math.min(#list, LIMIT) do
+            local item = list[index]
+            local r, g, b = rarityColor(item.itemID)
+            local pieces = item.pieces > 0 and string.format("  x%d", item.pieces) or ""
+            GameTooltip:AddDoubleLine(tostring(item.name) .. pieces,
+                FWR.FormatAlignedMoney and FWR:FormatAlignedMoney(item.saved, digits) or money(api, item.saved),
+                r, g, b, 1, 1, 1)
+        end
+        if #list > LIMIT then
+            GameTooltip:AddLine(string.format("and %d more", #list - LIMIT), 0.75, 0.75, 0.75)
+        end
+        GameTooltip:Show()
+    end)
+    statusHit:SetScript("OnLeave", GameTooltip_Hide)
+
     ----------------------------------------------------------
     -- filling and sorting
     ----------------------------------------------------------
@@ -489,6 +527,7 @@ local function build(api)
             empty:SetText("The sales history is switched off (FarmWise AH > Options).")
             empty:Show()
             status:SetText("")
+            statusHit:Hide()
             return
         end
 
@@ -564,11 +603,21 @@ local function build(api)
             empty:Hide()
         end
         -- what the price check made you earn (only what was sold; all the time since the history began)
-        local saved = FWR.GetPriceCheckSavings and FWR:GetPriceCheckSavings() or 0
+        local saved, pieces, itemCount = 0, 0, 0
+        if FWR.GetPriceCheckSavings then
+            saved, pieces, itemCount = FWR:GetPriceCheckSavings()
+        end
         if saved > 0 then
-            status:SetText("The price check made you earn " .. money(api, saved) .. " more on what you sold")
+            local what = ""
+            if pieces > 0 then
+                what = string.format(" on %d %s sold (%d %s)", pieces, pieces == 1 and "piece" or "pieces", itemCount,
+                    itemCount == 1 and "item" or "different items")
+            end
+            status:SetText("The price check brought you an extra " .. money(api, saved) .. what)
+            statusHit:Show()
         else
             status:SetText("")
+            statusHit:Hide()
         end
     end
 

@@ -92,17 +92,24 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             },
             sections = {
                 { key = "window", title = "Main window" },
+                { key = "floatText", title = "Loot text while minimized" },
                 { key = "panels", title = "Control panels" },
                 { key = "layout", title = "Window layout" },
             },
             options = {
                 { key = "showMainWindowOnGameLoad", section = "window", label = "Show the main window when the game starts", defaultValue = true },
                 { key = "hideMainWindowInCombat", section = "window", label = "Minimize the main window during combat", defaultValue = false },
+                { key = "restoreMainWindowAfterCombat", section = "window", label = "Open it again after combat", defaultValue = false,
+                  tooltip = "After the fight the main window opens again by itself. Off: it stays the small button until you click it. A window you minimized yourself (with its own minimize button) always stays minimized: it is never opened for you." },
                 { key = "autoLockMainWindow", section = "window", label = "Lock the main window after a minute without moving it", defaultValue = true,
                   tooltip = "An unlocked window locks itself when it has not been moved for a minute, so it cannot be dragged by accident." },
                 { key = "keepColumnWidths", section = "window", label = "Keep the columns at their widest size (the window never shrinks)", defaultValue = true,
                   tooltip = "Each column keeps the widest size it has needed, also after a reload or after closing the game, so the window never jumps around. Turn it off and the columns always fit what they show. Use the button below to start again from the smallest widths." },
                 { key = "showMainFrameTooltips", section = "window", label = "Show tooltips in the main window", defaultValue = true },
+                { key = "floatLootText", section = "floatText", label = "Show the loot as floating text while minimized", defaultValue = true,
+                  tooltip = "While the main window is minimized to its small button, every item you loot rises from that button in the colour of its rarity (for example: Bright Linen x3) and fades away. It stops when the window is open." },
+                { key = "lootAlertSound", section = "floatText", label = "Alert for valuable loot: bigger letters and a sound", defaultValue = true,
+                  tooltip = "A loot that is worth at least the value chosen with the slider below comes in bigger letters, with a sound. Off: no alert, and the slider does nothing. It works only while the loot text is on." },
                 { key = "hideControlPanelsInCombat", section = "panels", label = "Hide the control panels during combat", defaultValue = true },
                 { key = "restoreControlPanelsAfterCombat", section = "panels", label = "Show the control panels again after combat", defaultValue = true },
             },
@@ -200,7 +207,8 @@ FWR.UI_CONFIG.ControlPanelWindow = {
                 { key = "combinedAllData", section = "scope", label = "Add up the data of all my characters", tooltip = "Adds up the data of all your characters, in every zone, in one view. While on, the Zone and Sub-Zone options below are switched off. Only changes what is shown.", settingPath = { "tracking", "combinedAllData" }, defaultValue = false },
                 { key = "combinedCharacterAllZones", section = "scope", label = "Add up all the zones of this character", tooltip = "Adds up the data of the current character over all zones, in one view. While on, the Zone and Sub-Zone options below are switched off. Only changes what is shown.", settingPath = { "tracking", "combinedCharacterAllZones" }, defaultValue = false },
                 { key = "zoneData", section = "scope", label = "Show the data of the whole zone", tooltip = "Shows the data of the zone you are in, with all its sub-zones added together. Only changes what is shown; the data is always saved per sub-zone.", settingPath = { "tracking", "zoneData" }, defaultValue = false },
-                { key = "subZoneData", section = "scope", label = "Show the data of the exact sub-zone", tooltip = "Shows only the data of the exact sub-zone you are in (the default). The Advisor always works per sub-zone, whatever you choose here.", settingPath = { "tracking", "subZoneData" }, defaultValue = true },
+                { key = "subZoneData", section = "scope", label = "Show the data of the exact sub-zone", tooltip = "Shows only the data of the exact sub-zone you are in (the default). The Advisor works per sub-zone, whatever you choose here (gathering is counted for the whole zone, see the option below).", settingPath = { "tracking", "subZoneData" }, defaultValue = true },
+                { key = "gatheringWholeZone", section = "scope", indent = 24, label = "Count gathering for the whole zone", tooltip = "Mining, herbalism, fishing and skinning are counted for the whole zone, not for the sub-zone where the node was: what you gather adds up in the zone, the session is not reset by walking into another sub-zone, and the Advisor tells you the zone to go to. Off: gathering is counted per sub-zone like everything else. It matters only while the exact sub-zone is shown above.", settingPath = { "tracking", "gatheringWholeZone" }, defaultValue = true },
             },
         },
 
@@ -360,6 +368,10 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             priceCheck = {
                 label = "Turn on the price check for all items",
                 tooltip = "Post waits while the price to post is unusually low against where most of the listings are, and the first + goes straight to the lowest usual price. An item can differ: right-click it in the tab.",
+            },
+            priceAutoFix = {
+                label = "Set the right price by itself",
+                tooltip = "With the price check on, a price that is unusually low is raised at once to the lowest usual price, so there is no need to press + on every item before Post. The prices that were corrected this way are written in green in the Sell list. A price you changed yourself with + or - is left as it is.",
             },
             tooltips = {
                 label = "Show tooltips in the FarmWise AH tab",

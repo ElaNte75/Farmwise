@@ -347,6 +347,7 @@ local function countUnit(unit)
                     local take = math.min(remaining, post.left)
                     -- (after the 5% the Auction House keeps: what is really earned)
                     entry.saved = (entry.saved or 0) + math.floor(take * post.gain * (1 - (tonumber(FWR.AUCTION_HOUSE_CUT) or 0.05)))
+                    entry.savedPieces = (entry.savedPieces or 0) + take
                     post.left = post.left - take
                     remaining = remaining - take
                 end
@@ -671,14 +672,52 @@ end)
 
 -- What the price check made you earn: for each post it made dearer (the price you would have posted without it, up to
 -- the lowest usual price), the difference for each piece that was sold. Only what is sold counts. Copper.
+-- Returns the copper, the pieces that were sold with a price made higher by the check, and how many different items
+-- they were.
 function FWR:GetPriceCheckSavings()
-    local total = 0
+    local total, pieces, items = 0, 0, 0
+    local log
     for _, entry in pairs(records() or {}) do
-        if type(entry) == "table" then
-            total = total + (tonumber(entry.saved) or 0)
+        if type(entry) == "table" and (tonumber(entry.saved) or 0) > 0 then
+            if entry.savedPieces == nil then
+                -- what was counted before the pieces were: they are told by the posts that are still in the log
+                log = log or postLog() or {}
+                local counted = 0
+                for _, post in ipairs(log) do
+                    if post.id == entry.id and post.gain and post.qty then
+                        counted = counted + math.max(0, post.qty - (post.left or 0))
+                    end
+                end
+                entry.savedPieces = counted
+            end
+            total = total + entry.saved
+            pieces = pieces + (tonumber(entry.savedPieces) or 0)
+            items = items + 1
         end
     end
-    return total
+    return total, pieces, items
+end
+
+-- The items behind the total of the price check, the biggest first: { itemID, name, saved (copper), pieces }
+function FWR:GetPriceCheckBreakdown()
+    local list = {}
+    for key, entry in pairs(records() or {}) do
+        if type(entry) == "table" and (tonumber(entry.saved) or 0) > 0 then
+            local name = entry.name
+            if (not name or name == "") and entry.id then
+                name = itemName(entry.id)
+            end
+            list[#list + 1] = { itemID = entry.id, name = name or key, saved = entry.saved,
+                pieces = tonumber(entry.savedPieces) or 0 }
+        end
+    end
+    table.sort(list, function(a, b)
+        if a.saved ~= b.saved then
+            return a.saved > b.saved
+        end
+        return tostring(a.name) < tostring(b.name)
+    end)
+    return list
 end
 
 -- A list of lines, one per item: { key, itemID, name, sold, net, gross, sales, returned, cancelled, posted, last,

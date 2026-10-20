@@ -331,9 +331,59 @@ local function build(api)
             return string.format("%d%%", v)
         end)
 
-        local checkCard = newCard(category, "right", "Price check", 118)
+        local checkCard = newCard(category, "right", "Price check", 192)
         note(checkCard, "Post waits while the price is unusually low against the listings.")
         check(checkCard, tabsConfig.priceCheck or {}, "tabPriceCheck", sellFiltersChanged)
+
+        -- how strict it is: how far under the usual price a price has to be before Post waits. One row, close
+        -- together, so that the last one does not touch the edge of the card
+        local LEVELS = {
+            { 1, "Relaxed", "Relaxed: Post waits only when the price is 30% or more under the usual one.\n\nPlay it here if you want to sell for sure and quickly, and keep what value you can: low prices are let through, only the really bad ones are stopped." },
+            { 2, "Normal", "Normal: Post waits when the price is 15% or more under the usual one.\n\nThe balance between selling and keeping the value. This is how the price check has always worked." },
+            { 3, "Strict", "Strict: Post waits when the price is 8% or more under the usual one.\n\nPlay it here if you watch your prices: even a small drop under the market is stopped." },
+            { 4, "Very strict", "Very strict: Post waits when the price is just 3% under the usual one.\n\nPlay it here if you do not want to lose any of the value of your items: almost everything under the market is stopped, and what you post is at the usual price or above." },
+        }
+        local LEVEL_GAP = 8
+        local levelChecks = {}
+        local previousLevel
+        local rowY = checkCard.body + 6
+        for _, level in ipairs(LEVELS) do
+            local button = CreateFrame("CheckButton", nil, checkCard, "InterfaceOptionsCheckButtonTemplate")
+            if previousLevel then
+                button:SetPoint("LEFT", previousLevel.Text, "RIGHT", LEVEL_GAP, 0)
+            else
+                button:SetPoint("TOPLEFT", checkCard.line, "BOTTOMLEFT", 0, -rowY)
+            end
+            button:SetHitRectInsets(0, 0, 0, 0)
+            if button.Text then
+                button.Text:ClearAllPoints()
+                button.Text:SetPoint("LEFT", button, "RIGHT", 0, 1)
+                button.Text:SetFontObject("GameFontHighlight")
+                button.Text:SetText(level[2])
+            end
+            button.fwValue = level[1]
+            explain(button, level[2], level[3])
+            button:SetScript("OnClick", function(self)
+                setNumber("tabPriceCheckLevel", self.fwValue)
+                sellFiltersChanged()
+                refreshAll()
+            end)
+            levelChecks[#levelChecks + 1] = button
+            previousLevel = button
+        end
+        checkCard.body = rowY + 28
+        refreshers[#refreshers + 1] = function()
+            local current = getNumber("tabPriceCheckLevel", 2)
+            for _, button in ipairs(levelChecks) do
+                button:SetChecked(button.fwValue == current)
+                paintCheck(button)
+            end
+        end
+
+        -- the price is set by itself (no pressing + on every item that is too low)
+        local autoFix = check(checkCard, tabsConfig.priceAutoFix or {}, "tabPriceAutoFix", sellFiltersChanged)
+        autoFix.fwDefault = false
+        note(checkCard, "A price it corrects is written in green in the Sell list, so you can see where it worked.")
 
         local wheelCard = newCard(category, "right", "Mouse wheel", 128)
         note(wheelCard, "Post the next item with the wheel, while the tab is open.")

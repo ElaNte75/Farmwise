@@ -36,6 +36,51 @@ local function formatPrice(copper)
     return string.format("%d%s", rest, COPPER_ICON)
 end
 
+-- The same price with every unit in a column of its own, so that the prices of a list stand gold under gold, silver
+-- under silver, copper under copper. goldDigits: the width of the gold column (the most digits of any line); what is
+-- not there (the missing gold digits, a gold or a silver that does not exist) is written invisibly, so that the
+-- places stay. All the digits of this font are of the same width.
+local BLANK_ICON = "|TInterface/MoneyFrame/UI-GoldIcon:0:0:2:0:64:64:0:1:0:1|t"   -- the empty corner of the picture
+
+local function invisible(text)
+    return "|c00000000" .. text .. "|r"
+end
+
+function FWR:FormatAlignedMoney(copper, goldDigits)
+    copper = math.floor(tonumber(copper) or 0)
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local rest = copper % 100
+    goldDigits = math.max(goldDigits or 1, 1)
+
+    local goldText
+    if gold > 0 then
+        local text = tostring(gold)
+        goldText = invisible(string.rep("0", goldDigits - #text)) .. text .. GOLD_ICON
+    else
+        goldText = invisible(string.rep("0", goldDigits)) .. BLANK_ICON
+    end
+
+    local silverText
+    if gold > 0 or silver > 0 then
+        silverText = string.format(" %02d%s", silver, SILVER_ICON)
+    else
+        silverText = " " .. invisible("00") .. BLANK_ICON
+    end
+
+    return goldText .. silverText .. string.format(" %02d%s", rest, COPPER_ICON)
+end
+
+-- how many digits the gold of the biggest of these amounts has
+function FWR:GoldDigitsOf(amounts)
+    local most = 1
+    for _, copper in ipairs(amounts) do
+        local gold = math.floor((tonumber(copper) or 0) / 10000)
+        most = math.max(most, #tostring(gold > 0 and gold or 0))
+    end
+    return most
+end
+
 -- Which kinds of item the last scan can have read: trade materials always, the other things sold by amount
 -- when that level of the scan is on, and everything when the whole Auction House is scanned.
 local ITEM_CLASS = (Enum and Enum.ItemClass) or {}
@@ -113,8 +158,9 @@ local function addVendorInfo(tooltip, itemID)
     tooltip:AddLine("Not listed in the AH Tab:", TEXT_RGB[1], TEXT_RGB[2], TEXT_RGB[3], false)
     tooltip:AddLine("a vendor pays more than the Auction House", TEXT_RGB[1], TEXT_RGB[2], TEXT_RGB[3], false)
     tooltip:AddLine(" ")
-    tooltip:AddDoubleLine("Vendor", formatPrice(vendor), 0.8, 0.8, 0.8, 1, 1, 1)
-    tooltip:AddDoubleLine("Auction House (after the 5% cut)", formatPrice(auction), 0.8, 0.8, 0.8, 1, 1, 1)
+    local digits = FWR:GoldDigitsOf({ vendor, auction })
+    tooltip:AddDoubleLine("Vendor", FWR:FormatAlignedMoney(vendor, digits), 0.8, 0.8, 0.8, 1, 1, 1)
+    tooltip:AddDoubleLine("Auction House (after the 5% cut)", FWR:FormatAlignedMoney(auction, digits), 0.8, 0.8, 0.8, 1, 1, 1)
 end
 
 local function addPriceLine(tooltip, data)

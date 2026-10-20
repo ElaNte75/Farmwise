@@ -1,8 +1,9 @@
-﻿## Interface: 120100
+﻿## Interface: 120100, 120105, 120107
 ## Title: FarmWise
 ## Notes: Farm smarter, zone by zone
-## Version: 4.4.42
+## Version: 4.5.43
 ## Author: ChrGeo/
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## SavedVariables: FarmWiseDB, FarmWiseReforgedDB, FarmWiseReforgedSettingsDB
 
 Core/FWR_Defaults.lua
@@ -43,6 +44,7 @@ UI/FWR_MainFrameConfigurator.lua
 UI/FWR_MainFrame.lua
 UI/FWR_ControlPanelConfigurator.lua
 UI/FWR_MainWindowControls.lua
+UI/FWR_LootFloatText.lua
 UI/FWR_CombatVisibility.lua
 UI/FWR_ControlPanelWindow.lua
 UI/FWR_ManualContent.lua

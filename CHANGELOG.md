@@ -3,6 +3,40 @@
 Version numbers are `major.minor.week`: the last number is the week of the year of the update, the middle
 one grows when settings or behaviour change.
 
+## 4.5.43
+
+**New**
+- Loot text while the window is minimized: every item you loot rises from the small FarmWise button, in the colour
+  of its rarity ("Bright Linen x3"), and fades away. It comes from the corner of the button towards the middle of
+  the screen. Options > Interface.
+- Valuable loot: an item worth at least the value you choose (a slider from 10g to 1000g) comes in bigger letters
+  and with a sound. The worth is the Auction House price of your last scan, or what a vendor pays.
+- Options > Interface: "Open it again after combat" (off by default). The window that was minimized by the fight
+  stays a small button until you click it, unless this is on. A window you minimized yourself is never opened for
+  you.
+- Price check: you choose how strict it is - Relaxed, Normal, Strict or Very strict. Each has its own explanation.
+- Price check: "Set the right price by itself" - a price that is unusually low is raised at once to the lowest
+  usual price, without pressing + on every item. The corrected prices are written in green in the Sell list.
+- History: the line under the table tells what the price check brought you ("The price check brought you an
+  extra 9g 70s 90c on 76 pieces sold (3 different items)"). Point at it to see each item and what it brought, with
+  the gold, silver and copper in columns.
+- Gathering (mining, herbalism, fishing, skinning) is counted for the whole zone, not for the sub-zone of the
+  node. What you gather adds up in the zone, the automatic session reset does not start over when you walk into
+  another sub-zone (only when you leave the zone), and the Advisor tells you the zone to go to. A switch in
+  Options > Tracking ("Count gathering for the whole zone", on by default) turns it off.
+- The tooltip lines of the vendor and the Auction House price stand in columns.
+- The FarmWise icon (a gold coin) shows in the list of AddOns. The game versions 12.1.0, 12.1.5 and 12.1.7 are
+  listed.
+
+**Changed**
+- The coins in the Price and Value columns of the main window are the game's newer coin pictures, all of one size.
+
+**Fixed**
+- Auctions: one mail for several posts (a buyer of 13 pieces from a post of 6 and one of 7) no longer leaves the
+  posts as "Ended".
+- The gold coin on the bag items stands closer to the corner of the item, and the options page of the tab no
+  longer runs out of its cards.
+
 ## 4.4.42
 
 **New**

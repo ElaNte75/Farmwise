@@ -45,6 +45,8 @@ function FWR:GetSellTabSettings()
         enabled = ah.tabEnabled ~= false,
         tooltips = ah.tabTooltips ~= false,
         openFirst = ah.tabOpenFirst ~= false,
+        priceAutoFix = ah.tabPriceAutoFix == true,
+        priceCheckLevel = math.max(1, math.min(4, math.floor(tonumber(ah.tabPriceCheckLevel) or 2))),
         vendorCoin = ah.tabVendorCoin ~= false,
         wheel = ah.tabWheel == true,
         wheelShift = ah.tabWheelShift ~= false,   -- the wheel posts only while Shift is held
@@ -214,6 +216,8 @@ local USUAL_SHARE = 0.15
 local USUAL_MIN_UNITS = 20    -- fewer pieces for sale than this: not enough to judge
 local USUAL_MIN_LISTINGS = 3
 local LOW_FACTOR = 0.85       -- below 85% of the usual price: unusually low
+-- the same, by the strictness the user chose: relaxed, normal, strict, very strict
+local LOW_FACTORS = { 0.70, 0.85, 0.92, 0.97 }
 local HIGH_FACTOR = 1.25      -- above 125% of it: high
 
 -- listings: { { price = copper, quantity = n }, ... } cheapest first. Returns the usual price, or nil.
@@ -247,7 +251,8 @@ function FWR:GetPriceZone(price, usual)
 
     -- prices of the Auction House are in whole silver (not one of the 358 listings that were looked at had
     -- copper): the lowest usual price is rounded up to a whole silver
-    local lowest = usual * LOW_FACTOR
+    local level = self.GetSellTabSettings and self:GetSellTabSettings().priceCheckLevel or 2
+    local lowest = usual * (LOW_FACTORS[level] or LOW_FACTOR)
     if lowest >= 100 then
         lowest = math.ceil(lowest / 100) * 100
     else

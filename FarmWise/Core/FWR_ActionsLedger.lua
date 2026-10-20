@@ -215,6 +215,56 @@ local function sameItem(record, unit)
 end
 
 -- the gold or the items of a post were taken from the mailbox: that line is finished
+-- When a line ends: the one that ends first (or, when that is not known, the one that was noticed first)
+local function endOf(record)
+    return record.expires or record.since or 0
+end
+
+-- Takes `left` pieces from the lines in this state that are of the item of the unit: a line with exactly that amount
+-- first, else the oldest lines one after the other (one mail can be for several posts - a buyer who bought 13 pieces
+-- from a post of 6 and a post of 7 gets one mail of 13 -, or for a part of a post). Returns what is still left.
+-- only: a test a line must pass to be taken (nil: none).
+local function takeFrom(records, state, unit, left, only)
+    local candidates = {}
+    for _, record in ipairs(records) do
+        if record.state == state and sameItem(record, unit) and (not only or only(record)) then
+            candidates[#candidates + 1] = record
+        end
+    end
+    table.sort(candidates, function(a, b)
+        return endOf(a) < endOf(b)
+    end)
+
+    local function remove(record)
+        for position, other in ipairs(records) do
+            if other == record then
+                table.remove(records, position)
+                return
+            end
+        end
+    end
+
+    for _, record in ipairs(candidates) do
+        if record.qty == left then
+            remove(record)
+            return 0
+        end
+    end
+    for _, record in ipairs(candidates) do
+        if left <= 0 then
+            break
+        end
+        if record.qty > left then
+            record.qty = record.qty - left
+            left = 0
+        else
+            left = left - record.qty
+            remove(record)
+        end
+    end
+    return left
+end
+
 local function collected(unit)
     local records = list()
     local order = type(unit) == "table" and SEARCH_ORDER[unit.kind]
@@ -226,54 +276,23 @@ local function collected(unit)
         return
     end
 
-    for rank, state in ipairs(order) do
-        -- a line with exactly this amount first
-        for position, record in ipairs(records) do
-            if record.state == state and sameItem(record, unit) and record.qty == left then
-                table.remove(records, position)
-                changed()
-                return
-            end
-        end
-        -- then, for the first state only, the oldest lines (a mail can cover several posts, or part of one)
-        if rank == 1 then
-            table.sort(records, function(a, b)
-                return (a.since or 0) > (b.since or 0)
-            end)
-            -- sorted newest first, so walking from the end takes the oldest first
-            for position = #records, 1, -1 do
-                local record = records[position]
-                if left > 0 and record.state == state and sameItem(record, unit) then
-                    if record.qty > left then
-                        record.qty = record.qty - left
-                        left = 0
-                    else
-                        left = left - record.qty
-                        table.remove(records, position)
-                    end
-                end
-            end
-            if left <= 0 then
-                changed()
-                return
-            end
+    for _, state in ipairs(order) do
+        left = takeFrom(records, state, unit, left)
+        if left <= 0 then
+            changed()
+            return
         end
     end
 
-    -- The mail was taken before the page knew that the post was gone (the Auction House was closed and the line
-    -- still says "active"; with it open its list is the truth): the mail says that post is over, so its line goes. The post that ends first is the one
-    -- (if it was another post of the same item, the list of the game brings the line back when it is asked).
+    -- The mail was taken before the page knew that the posts were gone (the Auction House was closed and the lines
+    -- still say "active"; with it open its list is the truth): the mail says that these posts are over, so their lines
+    -- go, the ones that end first. (If it was other posts of the same item, the list of the game brings the lines
+    -- back when it is asked.) A post that ran out must have reached its end; a sold one can have been sold at any time.
     if (unit.kind == "sale" or unit.kind == "expired") and not ahOpen then
-        local pick, pickPosition
-        for position, record in ipairs(records) do
-            if record.state == "active" and sameItem(record, unit) and record.qty == (tonumber(unit.count) or 0)
-                and (not pick or (record.expires or math.huge) < (pick.expires or math.huge)) then
-                pick, pickPosition = record, position
-            end
-        end
-        if pick then
-            table.remove(records, pickPosition)
-        end
+        local now = time()
+        left = takeFrom(records, "active", unit, left, function(record)
+            return unit.kind == "sale" or (record.expires and record.expires <= now + EXPIRY_SLACK)
+        end)
     end
     changed()
 end
@@ -322,6 +341,36 @@ local function mailSeen(units, inboxLoaded)
             if found then
                 used[found] = true
                 unitUsed[unit] = true
+            elseif unit.kind == "sale" then
+                -- one mail of a sale can be for several posts (13 pieces bought from a post of 6 and one of 7):
+                -- the oldest "ended" lines of the item that add up to the pieces of the mail are that sale
+                local candidates = {}
+                for index, record in ipairs(records) do
+                    if not used[index] and record.state == "ended" and sameItem(record, unit) then
+                        candidates[#candidates + 1] = { index = index, record = record }
+                    end
+                end
+                table.sort(candidates, function(x, y)
+                    return endOf(x.record) < endOf(y.record)
+                end)
+                local sum, taken = 0, {}
+                for _, candidate in ipairs(candidates) do
+                    if sum + candidate.record.qty <= count then
+                        sum = sum + candidate.record.qty
+                        taken[#taken + 1] = candidate
+                    end
+                    if sum == count then
+                        break
+                    end
+                end
+                if sum == count and #taken > 1 then
+                    for _, candidate in ipairs(taken) do
+                        candidate.record.state = state
+                        used[candidate.index] = true
+                    end
+                    unitUsed[unit] = true
+                    touched = true
+                end
             end
         end
     end

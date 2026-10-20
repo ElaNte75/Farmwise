@@ -333,6 +333,172 @@ H.fire("MAIL_SHOW")
 H.advance(0.5)
 openAll(3)
 check("a later sale of the same price is not credited again", FWR:GetPriceCheckSavings() == 19000, FWR:GetPriceCheckSavings())
+local _, savedPieces, savedItems = FWR:GetPriceCheckSavings()
+check("the pieces and the items it counts: 10 pieces of 1 item", savedPieces == 10 and savedItems == 1,
+    tostring(savedPieces) .. " pieces, " .. tostring(savedItems) .. " items")
+
+section("Floating loot text while minimized")
+local errorsBefore = #H.results.errors
+local mini = CreateFrame("Button", nil, UIParent)
+mini:SetSize(80, 20)
+mini:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 10, 10)
+mini:Show()
+local realMini = FWR.GetMainWindowMiniButton
+FWR.GetMainWindowMiniButton = function() return mini end
+FWR.Settings.ui.floatLootText = true
+FWR.Settings.ui.lootAlertGold = 0
+FWR:Emit("lootRecorded", { itemName = "Bright Linen", itemRarity = 2, itemID = 236965 }, 3)
+FWR:Emit("lootRecorded", { itemName = "Bright Linen", itemRarity = 2, itemID = 236965 }, 2)
+FWR:Emit("lootRecorded", { itemName = "Radiant Shard", itemRarity = 3, itemID = 243602 }, 1)
+H.advance(0.5)
+H.advance(1)
+H.advance(5)
+check("looting with the window minimized makes no error", #H.results.errors == errorsBefore)
+FWR.Settings.ui.lootAlertGold = 1
+FWR:Emit("lootRecorded", { itemName = "Radiant Shard", itemRarity = 3, itemID = 243602 }, 5)
+H.advance(6)
+check("a valuable loot makes no error either", #H.results.errors == errorsBefore)
+mini:Hide()
+FWR:Emit("lootRecorded", { itemName = "Bright Linen", itemRarity = 2, itemID = 236965 }, 1)
+H.advance(1)
+check("with the window open nothing is shown and nothing breaks", #H.results.errors == errorsBefore)
+FWR.GetMainWindowMiniButton = realMini
+FWR.Settings.ui.floatLootText = false
+
+section("The main window and combat: coming back after the fight is the user's choice")
+check("the main window exists in the test", FWR.MainFrame ~= nil)
+local ui = FWR.Settings.ui
+ui.hideMainWindowInCombat = true
+ui.restoreMainWindowAfterCombat = false
+ui.mainWindowMinimized = false
+FWR.minimizedByCombat = nil
+FWR:ApplyMainWindowPresentation(true)
+check("in combat it is minimized", FWR.minimizedByCombat == true)
+FWR:ApplyMainWindowPresentation(false)
+check("after the fight it stays minimized when 'open it again' is off", FWR.minimizedByCombat == true)
+FWR:SetMainWindowMinimized(false)
+check("a click on the small button opens it", FWR.minimizedByCombat == nil and ui.mainWindowMinimized == false)
+ui.restoreMainWindowAfterCombat = true
+FWR:ApplyMainWindowPresentation(true)
+FWR:ApplyMainWindowPresentation(false)
+check("after the fight it opens again when 'open it again' is on", FWR.minimizedByCombat == nil)
+FWR:SetMainWindowMinimized(true)
+FWR:ApplyMainWindowPresentation(true)
+FWR:ApplyMainWindowPresentation(false)
+check("a window minimized by hand is not opened after the fight", ui.mainWindowMinimized == true)
+FWR:SetMainWindowMinimized(false)
+ui.hideMainWindowInCombat = false
+ui.restoreMainWindowAfterCombat = false
+
+section("Price check strictness")
+FarmWiseReforgedSettingsDB.ah = FarmWiseReforgedSettingsDB.ah or {}
+local function zoneAt(level, price)
+    FarmWiseReforgedSettingsDB.ah.tabPriceCheckLevel = level
+    return (FWR:GetPriceZone(price, 10000))
+end
+check("normal (the default) is under 85% of the usual", zoneAt(nil, 8600) == "normal" and zoneAt(nil, 8400) == "low")
+check("relaxed is under 70%", zoneAt(1, 7100) == "normal" and zoneAt(1, 6900) == "low")
+check("strict is under 92%", zoneAt(3, 9300) == "normal" and zoneAt(3, 9100) == "low")
+check("very strict is under 97%", zoneAt(4, 9800) == "normal" and zoneAt(4, 9600) == "low")
+check("a value out of range is held to the nearest level (9 is very strict)", zoneAt(9, 9600) == "low" and zoneAt(0, 6900) == "low" and zoneAt(0, 7100) == "normal")
+FarmWiseReforgedSettingsDB.ah.tabPriceCheckLevel = nil
+
+section("Auctions: one mail for several posts (a buyer of 13 pieces from a post of 6 and one of 7)")
+FWR:GetActionRows()
+local ledger
+for _, records in pairs(FarmWiseDB._actions or {}) do ledger = records end
+local function lines(state, ...)
+    for index = #ledger, 1, -1 do ledger[index] = nil end
+    local now = time()
+    for index, qty in ipairs({ ... }) do
+        ledger[#ledger + 1] = { id = 9000 + index, itemID = 236965, name = "Bright Linen", qty = qty, unit = 13300,
+            state = state, since = now, expires = now - 3600 * (10 - index), soldKnown = false }
+    end
+end
+local function taken(count)
+    FWR:Emit("auctionUnitCollected", { kind = "sale", itemID = 236965, name = "Bright Linen", count = count })
+end
+lines("ended", 6, 7)
+taken(13)
+check("ended lines of 6 and 7 are both cleared by one mail of 13", #ledger == 0, #ledger)
+H.fire("AUCTION_HOUSE_CLOSED")
+lines("active", 6, 7)
+taken(13)
+check("the same with the lines still 'active' (the mail was taken before the Auction House was opened)", #ledger == 0, #ledger)
+lines("ended", 6, 7)
+taken(10)
+check("a mail of 10 clears the older line (6) and takes 4 of the next (7 becomes 3)", #ledger == 1 and ledger[1].qty == 3,
+    #ledger .. " line(s), qty " .. tostring(ledger[1] and ledger[1].qty))
+lines("ended", 6, 7)
+taken(6)
+check("a mail of 6 clears the line of 6 and leaves the 7", #ledger == 1 and ledger[1].qty == 7, #ledger)
+-- while the mail is still in the mailbox: the lines that add up to it are that sale
+lines("ended", 6, 7)
+FWR:Emit("auctionMailSeen", { { kind = "sale", key = "x", expiry = time() + 86400, itemID = 236965, name = "Bright Linen",
+    count = 13, gross = 100 } }, true)
+check("seen in the mailbox: the two ended lines become 'sold'", ledger[1] and ledger[1].state == "sold" and ledger[2] and ledger[2].state == "sold")
+for index = #ledger, 1, -1 do ledger[index] = nil end
+
+section("Gathering is counted for the whole zone: the automatic reset")
+FWR.Settings.engine.sessionResetMode = "auto"
+FWR.Settings.engine.autoResetDelaySeconds = 15
+local realReset = FWR.ResetSessionsInScope
+local resets = {}
+FWR.ResetSessionsInScope = function(_, scope)
+    resets[#resets + 1] = (scope.zone or "?") .. "::" .. tostring(scope.subzone)
+end
+check("the view is by sub-zone", FWR:GetViewScope().mode == "subzone")
+local function walk(fromKey, toKey)
+    FWR:HandleAreaChanged(fromKey)   -- (the place we start from is only remembered; what was waiting is let to pass)
+    H.advance(20)
+    resets = {}
+    FWR:HandleAreaChanged(toKey)
+    H.advance(20)
+    return table.concat(resets, " | ")
+end
+local zoneA = FWR:BuildDetailedContextKey("Zed", "Ridge")
+local zoneB = FWR:BuildDetailedContextKey("Zed", "Valley")
+local zoneWhole = FWR:BuildDetailedContextKey("Zed", nil)
+local other = FWR:BuildDetailedContextKey("Yan", "Cove")
+local r1 = walk(zoneA, zoneB)
+check("from a sub-zone to another sub-zone of the zone: the old one is reset", r1 == "Zed::Ridge", r1)
+local r2 = walk(zoneA, zoneWhole)
+check("gathering starts in a sub-zone (the whole zone is the area): nothing is reset", r2 == "", r2)
+local r3 = walk(zoneWhole, zoneB)
+check("gathering is over, back to a sub-zone: nothing is reset", r3 == "", r3)
+local r4 = walk(zoneWhole, other)
+check("from the gathering of a zone into another zone: the zone starts over", r4 == "Zed::", r4)
+local r5 = walk(zoneA, other)
+check("from a sub-zone into another zone: the sub-zone and the gathering of the zone start over",
+    r5:find("Zed::Ridge", 1, true) ~= nil and (r5 .. " |"):find("Zed:: |", 1, true) ~= nil, r5)
+-- coming back in time cancels the reset of the gathering
+FWR:HandleAreaChanged(zoneWhole)
+H.advance(20)
+resets = {}
+FWR:HandleAreaChanged(other)
+H.advance(5)
+FWR:HandleAreaChanged(zoneB)
+H.advance(30)
+local backReset = false
+for _, entry in ipairs(resets) do
+    if entry == "Zed::" then backReset = true end
+end
+check("back in the zone before the delay is over: the gathering of the zone is not reset", not backReset,
+    table.concat(resets, " | "))
+FWR.ResetSessionsInScope = realReset
+FWR.Settings.engine.sessionResetMode = "manual"
+
+section("Gathering: the area is the whole zone while it goes on, and after it the sub-zone again")
+check("not gathering: the sub-zone is used", FWR:GetAreaSubZoneText() == "The Waking Shores")
+FWR:NoteGatheringActivity()
+check("gathering: no sub-zone", FWR:GetAreaSubZoneText() == "")
+H.advance(400)
+check("long after the last gathering: the sub-zone again", FWR:GetAreaSubZoneText() == "The Waking Shores")
+FWR.Settings.tracking.gatheringWholeZone = false
+FWR:NoteGatheringActivity()
+check("with the option off, gathering is counted per sub-zone", FWR:GetAreaSubZoneText() == "The Waking Shores")
+FWR.Settings.tracking.gatheringWholeZone = true
+H.advance(400)
 
 print(string.format("\nRESULT: %d passed, %d failed, %d runtime error(s) caught", H.results.pass, H.results.fail, #H.results.errors))
 for i, e in ipairs(H.results.errors) do

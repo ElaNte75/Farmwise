@@ -337,13 +337,24 @@ local function startPrice(entry)
     return entry.lowest
 end
 
+local priceZone      -- (defined below: where a price stands against the usual price)
+
 local function updatePrice(entry)
     if not entry.lowest then
         entry.price = nil
         return
     end
+    entry.autoFixed = false
     if not entry.touched or not entry.price then
         entry.price = startPrice(entry)
+        -- the price check sets the right price by itself, when the user chose that: what the first "+" would do
+        if entry.check and entry.usual and FWR.GetSellTabSettings and FWR:GetSellTabSettings().priceAutoFix then
+            local zone, usualLowest = priceZone(entry)
+            if zone == "low" and usualLowest then
+                entry.price = math.max(usualLowest, entry.average or 0)
+                entry.autoFixed = true   -- the price is shown in green
+            end
+        end
     end
     -- the price is never under your average (also when the average or the market changed)
     if entry.average and entry.price < entry.average then
@@ -360,7 +371,7 @@ end
 
 -- Where the price to post stands against the usual price: "low", "normal" or "high", and the lowest usual
 -- price. nil when the check is off for the item or there is not enough to judge by.
-local function priceZone(entry, price)
+priceZone = function(entry, price)
     if not (entry.check and entry.usual and FWR.GetPriceZone) then
         return nil
     end
@@ -831,8 +842,23 @@ local function showNote(row, text, unbounded)
     renderNote(row.money, row.price, COLUMN.price.width, text, unbounded)
 end
 
-local function showMoney(row, copper)
+-- a price the price check set by itself is written in green; the colour the numbers had is kept to give it back
+local plainColor = setmetatable({}, { __mode = "k" })
+local FIXED_COLOR = { 0.35, 1, 0.45 }
+
+local function paintPrice(slot, fixed)
+    local text = slot.text
+    if not plainColor[text] then
+        plainColor[text] = { text:GetTextColor() }
+    end
+    local color = fixed and FIXED_COLOR or plainColor[text]
+    text:SetTextColor(color[1], color[2], color[3])
+end
+
+local function showMoney(row, copper, fixed)
     renderMoney(row.money, row.price, COLUMN.price.width, copper, GOLD_DIGITS, "goldDigits")
+    paintPrice(row.money.gold, fixed == true)
+    paintPrice(row.money.silver, fixed == true)
 end
 
 -- the value of the whole amount: after the 5% cut of the Auction House, in whole silver
@@ -1680,7 +1706,7 @@ refreshRows = function()
                 if entry.notCommodity then
                     showNote(row, "single item - not here")
                 elseif entry.price then
-                    showMoney(row, entry.price)
+                    showMoney(row, entry.price, entry.autoFixed)
                 else
                     showNote(row, "...")
                 end

@@ -401,6 +401,40 @@ local function refreshInterfaceDependencies(frame)
         updateCheckboxVisual(hideMainFrameCheck)
     end
 
+    -- "Open it again after combat" follows "Minimize the main window during combat"
+    local restoreMainCheck = controls.restoreMainWindowAfterCombat
+    if hideMainFrameCheck and restoreMainCheck then
+        if hideMainFrameCheck:GetChecked() then
+            restoreMainCheck:Enable()
+        else
+            restoreMainCheck:SetChecked(false)
+            setBooleanSetting("restoreMainWindowAfterCombat", false)
+            restoreMainCheck:Disable()
+        end
+        updateCheckboxVisual(restoreMainCheck)
+    end
+
+    -- the loot text: its alert and the value of the alert follow it, the value also follows the alert
+    local floatCheck = controls.floatLootText
+    local alertCheck = controls.lootAlertSound
+    local alertSlider = controls.lootAlertSlider
+    if floatCheck and alertCheck then
+        if floatCheck:GetChecked() then
+            alertCheck:Enable()
+        else
+            alertCheck:Disable()
+        end
+        updateCheckboxVisual(alertCheck)
+        if alertSlider then
+            local on = floatCheck:GetChecked() == true and alertCheck:GetChecked() == true
+            alertSlider:SetEnabled(on)
+            alertSlider:SetAlpha(on and 1 or 0.45)
+            if controls.lootAlertTitle then
+                controls.lootAlertTitle:SetAlpha(on and 1 or 0.45)
+            end
+        end
+    end
+
     if hidePanelsCheck and restoreCheck then
         if hidePanelsCheck:GetChecked() then
             restoreCheck:Enable()
@@ -883,6 +917,63 @@ local function createInterfacePage(parent, frame)
 
         page.InterfaceControls[option.key] = check
         previous = check
+
+        -- under the sound: the value from which a loot is "valuable" (bigger letters, and the sound), a slider
+        if option.key == "lootAlertSound" then
+            local spacer = CreateFrame("Frame", nil, page)
+            spacer:SetSize(1, 54)
+            spacer:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 0, -4)
+
+            local alertTitle = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            alertTitle:SetPoint("TOPLEFT", spacer, "TOPLEFT", 4, 0)
+
+            local alertSlider = CreateFrame("Slider", nil, page, "OptionsSliderTemplate")
+            alertSlider:SetPoint("TOPLEFT", alertTitle, "BOTTOMLEFT", 0, -10)
+            alertSlider:SetWidth(240)
+            alertSlider:SetOrientation("HORIZONTAL")
+            alertSlider:SetMinMaxValues(10, 1000)
+            alertSlider:SetValueStep(10)
+            alertSlider:SetObeyStepOnDrag(true)
+            alertSlider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+            if alertSlider.Text then alertSlider.Text:SetText("") end
+            if alertSlider.Low then alertSlider.Low:SetText("10g") end
+            if alertSlider.High then alertSlider.High:SetText("1000g") end
+
+            local function savedAlertValue()
+                local saved = tonumber(((FWR.Settings or {}).ui or {}).lootAlertGold) or 100
+                if saved < 10 then
+                    saved = 100
+                end
+                return math.min(1000, saved)
+            end
+            local function showAlertValue(value)
+                alertTitle:SetText(string.format("Valuable loot from: %dg", value))
+            end
+
+            alertSlider.__fwrRefreshing = true
+            alertSlider:SetValue(savedAlertValue())
+            alertSlider.__fwrRefreshing = nil
+            showAlertValue(savedAlertValue())
+
+            alertSlider:SetScript("OnValueChanged", function(self, value)
+                local snapped = math.max(10, math.min(1000, math.floor((tonumber(value) or 100) / 10 + 0.5) * 10))
+                showAlertValue(snapped)
+                if self.__fwrRefreshing then
+                    return
+                end
+                setValueSetting({ "ui", "lootAlertGold" }, snapped)
+            end)
+            page:HookScript("OnShow", function()
+                alertSlider.__fwrRefreshing = true
+                alertSlider:SetValue(savedAlertValue())
+                alertSlider.__fwrRefreshing = nil
+                showAlertValue(savedAlertValue())
+            end)
+            attachTooltip(alertSlider, "Valuable loot", "In the floating loot text (while the window is minimized), a loot that is worth at least this much comes in bigger letters, and with a sound if the sound is on. The worth is the Auction House price of your last scan, or what a vendor pays.")
+            page.InterfaceControls.lootAlertSlider = alertSlider
+            page.InterfaceControls.lootAlertTitle = alertTitle
+            previous = spacer
+        end
     end
 
     -- start again from the smallest column widths
@@ -1027,6 +1118,19 @@ local function refreshTrackingDependencies(page)
         end
         updateCheckboxVisual(subZoneControl)
     end
+
+    -- "Count gathering for the whole zone" only matters while the exact sub-zone is shown: it follows that option
+    local gatherControl = page.TrackingControls.gatheringWholeZone
+    if gatherControl then
+        local subZoneOn = FWR and FWR.IsSubZoneDataEnabled and FWR:IsSubZoneDataEnabled() or false
+        gatherControl:SetChecked(getBooleanSetting({ "tracking", "gatheringWholeZone" }, true))
+        if subZoneOn and not combinedModeActive then
+            gatherControl:Enable()
+        else
+            gatherControl:Disable()
+        end
+        updateCheckboxVisual(gatherControl)
+    end
 end
 
 local function createTrackingPage(parent)
@@ -1052,9 +1156,13 @@ local function createTrackingPage(parent)
             previous = createSection(page, sectionTitles[currentSection] or "", previous)
             afterTitle = true
         end
+        -- an option that depends on the one above it stands a little further in
+        local indent = option.indent or 0
         if afterTitle then
             check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -GAP_AFTER_LINE)
             afterTitle = false
+        elseif indent > 0 then
+            check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", indent, -GAP_NEXT_CHECK)
         else
             check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -GAP_NEXT_CHECK)
         end
