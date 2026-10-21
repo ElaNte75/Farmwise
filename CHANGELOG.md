@@ -29,7 +29,8 @@ one grows when settings or behaviour change.
   listed.
 
 **Changed**
-- The coins in the Price and Value columns of the main window are the game's newer coin pictures, all of one size.
+- The coins in the Price and Value columns of the main window are drawn in a cell of their own: the copper, the
+  silver and the gold of every row stand exactly under each other, and the gold digits grow to the left.
 
 **Fixed**
 - Auctions: one mail for several posts (a buyer of 13 pieces from a post of 6 and one of 7) no longer leaves the

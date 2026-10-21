@@ -289,6 +289,11 @@ end
 
 -- Copper as "12 34 56" followed by the gold, silver and copper coin icons; gold is left out when there
 -- is none, and once the first unit is shown every smaller unit follows (same rule as the tooltip price).
+-- This is the short text, for a tooltip. The columns of the window draw the price in a cell of its own (below).
+local COIN_GOLD = "|TInterface/MoneyFrame/UI-GoldIcon:12:12:2:0|t"
+local COIN_SILVER = "|TInterface/MoneyFrame/UI-SilverIcon:12:12:2:0|t"
+local COIN_COPPER = "|TInterface/MoneyFrame/UI-CopperIcon:12:12:2:0|t"
+
 local function formatCopperText(copper)
     if not copper then
         return "-"
@@ -297,24 +302,111 @@ local function formatCopperText(copper)
     local gold = math.floor(copper / 10000)
     local silver = math.floor((copper % 10000) / 100)
     local rest = copper % 100
-    -- the coins of the game's newer pictures (the same as in the Auction House tab): all three of one size and
-    -- one centre, so that they stand in line with the digits
-    local g = "|A:Coin-Gold:12:10:2:0|a"
-    local s = "|A:Coin-Silver:12:10:2:0|a"
-    local c = "|A:Coin-Copper:12:10:2:0|a"
 
     if gold > 0 then
-        return string.format("%d%s %02d%s %02d%s", gold, g, silver, s, rest, c)
+        return string.format("%d%s %02d%s %02d%s", gold, COIN_GOLD, silver, COIN_SILVER, rest, COIN_COPPER)
     elseif silver > 0 then
-        return string.format("%d%s %02d%s", silver, s, rest, c)
+        return string.format("%d%s %02d%s", silver, COIN_SILVER, rest, COIN_COPPER)
     end
-    return string.format("%d%s", rest, c)
+    return string.format("%d%s", rest, COIN_COPPER)
+end
+
+-- The price in a cell of the column: three places, each with its number and its coin, put from the right edge:
+-- the copper coin is at the edge, the silver before it, the gold before that. The number of the silver and of the
+-- copper have a place of a fixed width (always two digits), so the coins of every row stand exactly under each
+-- other; the gold number is written to the left of its coin and grows to the left, pushing nothing.
+local COIN_W, COIN_H, COIN_GAP, PART_GAP = 10, 12, 2, 3
+local TWO_DIGITS_WIDTH = 12    -- the width of "00" in the small font (measured once when the first cell is made)
+
+local function createMoneyCell(row)
+    local cell = CreateFrame("Frame", nil, row)
+    cell:SetSize(1, 14)
+    cell:EnableMouse(false)
+
+    local parts = {}
+    local previousText
+    for _, spec in ipairs({ { "copper", "Coin-Copper" }, { "silver", "Coin-Silver" }, { "gold", "Coin-Gold" } }) do
+        local icon = cell:CreateTexture(nil, "OVERLAY")
+        icon:SetSize(COIN_W, COIN_H)
+        pcall(function()
+            icon:SetAtlas(spec[2])
+        end)
+        if previousText then
+            icon:SetPoint("RIGHT", previousText, "LEFT", -PART_GAP, 0)
+        else
+            icon:SetPoint("RIGHT", cell, "RIGHT", 0, 0)
+        end
+
+        local text = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetJustifyH("RIGHT")
+        text:SetTextColor(0.9, 0.9, 0.9, 1)
+        text:SetWordWrap(false)
+        text:SetPoint("RIGHT", icon, "LEFT", -COIN_GAP, 0)
+        if spec[1] ~= "gold" then
+            text:SetText("00")
+            TWO_DIGITS_WIDTH = math.ceil(text:GetStringWidth() or TWO_DIGITS_WIDTH) + 1
+            text:SetWidth(TWO_DIGITS_WIDTH)
+        end
+
+        parts[spec[1]] = { icon = icon, text = text }
+        previousText = text
+    end
+    cell.parts = parts
+    return cell
+end
+
+local function setMoneyCell(cell, copper)
+    if not cell then
+        return
+    end
+    if not copper or cell.columnHidden then
+        cell:Hide()
+        return
+    end
+    copper = math.floor(copper)
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local rest = copper % 100
+
+    local parts = cell.parts
+    parts.copper.text:SetText(string.format("%02d", rest))
+    local showSilver = gold > 0 or silver > 0
+    parts.silver.text:SetText(string.format("%02d", silver))
+    parts.silver.text:SetShown(showSilver)
+    parts.silver.icon:SetShown(showSilver)
+    parts.gold.text:SetText(tostring(gold))
+    parts.gold.text:SetShown(gold > 0)
+    parts.gold.icon:SetShown(gold > 0)
+    cell:Show()
+end
+
+-- how wide the cell of this price is: for the width of the column
+local function moneyCellWidth(copper, measureText)
+    if not copper then
+        return measureText("-")
+    end
+    copper = math.floor(copper)
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local width = TWO_DIGITS_WIDTH + COIN_GAP + COIN_W
+    if gold > 0 or silver > 0 then
+        width = width + PART_GAP + TWO_DIGITS_WIDTH + COIN_GAP + COIN_W
+    end
+    if gold > 0 then
+        width = width + PART_GAP + math.ceil(measureText(tostring(gold))) + COIN_GAP + COIN_W
+    end
+    return width
 end
 
 -- The price text and the value text (price x session quantity) of a row.
 local function getEntryPriceTexts(entry)
     local price = FWR.GetAuctionPrice and FWR:GetAuctionPrice(entry.itemID) or nil
     return formatCopperText(price), formatCopperText(price and price * (tonumber(entry.quantityCount) or 0) or nil)
+end
+
+-- the same, for the tooltips of the cells
+local function getEntryPricePlainTexts(entry)
+    return getEntryPriceTexts(entry)
 end
 
 local function getRenderConfigForFrame(frame)
@@ -1328,9 +1420,10 @@ local function getTextColumnMeta(frame, entries, config)
             end
         end
         if needed.price or needed.value then
-            local priceText, valueText = getEntryPriceTexts(entry)
-            if needed.price then needed.price = math.max(needed.price, measureText(priceText)) end
-            if needed.value then needed.value = math.max(needed.value, measureText(valueText)) end
+            local price = FWR.GetAuctionPrice and FWR:GetAuctionPrice(entry.itemID) or nil
+            local value = price and price * (tonumber(entry.quantityCount) or 0) or nil
+            if needed.price then needed.price = math.max(needed.price, moneyCellWidth(price, measureText)) end
+            if needed.value then needed.value = math.max(needed.value, moneyCellWidth(value, measureText)) end
         end
     end
 
@@ -1591,6 +1684,14 @@ local function applyRowColumnLayout(row, frame)
 
     applyTextColumnLayout(row.price, row, x12, priceWidth, getColumnDataAlign(getRenderConfigForFrame(frame), "price", "RIGHT"), getColumnDataInset(getRenderConfigForFrame(frame), "price", "LEFT"), getColumnDataInset(getRenderConfigForFrame(frame), "price", "RIGHT"))
     if priceWidth <= 0 then row.price:Hide() end
+    if row.priceCell then
+        row.priceCell:ClearAllPoints()
+        row.priceCell:SetPoint("RIGHT", row, "LEFT", x12 + priceWidth - getColumnDataInset(getRenderConfigForFrame(frame), "price", "RIGHT"), 0)
+        row.priceCell.columnHidden = priceWidth <= 0   -- a column that is not shown has no cell either
+        if priceWidth <= 0 then
+            row.priceCell:Hide()
+        end
+    end
     if row.priceHitbox then
         row.priceHitbox:ClearAllPoints()
         if priceWidth > 0 then
@@ -1604,6 +1705,14 @@ local function applyRowColumnLayout(row, frame)
 
     applyTextColumnLayout(row.value, row, x13, valueWidth, getColumnDataAlign(getRenderConfigForFrame(frame), "value", "RIGHT"), getColumnDataInset(getRenderConfigForFrame(frame), "value", "LEFT"), getColumnDataInset(getRenderConfigForFrame(frame), "value", "RIGHT"))
     if valueWidth <= 0 then row.value:Hide() end
+    if row.valueCell then
+        row.valueCell:ClearAllPoints()
+        row.valueCell:SetPoint("RIGHT", row, "LEFT", x13 + valueWidth - getColumnDataInset(getRenderConfigForFrame(frame), "value", "RIGHT"), 0)
+        row.valueCell.columnHidden = valueWidth <= 0
+        if valueWidth <= 0 then
+            row.valueCell:Hide()
+        end
+    end
     if row.valueHitbox then
         row.valueHitbox:ClearAllPoints()
         if valueWidth > 0 then
@@ -1764,6 +1873,7 @@ local function ensureRow(frame, index)
             text:SetMaxLines(1)
         end
         row[key] = text
+        row[key .. "Cell"] = createMoneyCell(row)
 
         local hitbox = CreateFrame("Frame", nil, row)
         hitbox:SetFrameLevel(row:GetFrameLevel() + 5)
@@ -2243,6 +2353,8 @@ local function clearHiddenRow(row)
     if row.value then
         setTextIfChanged(row.value, "")
     end
+    if row.priceCell then row.priceCell:Hide() end
+    if row.valueCell then row.valueCell:Hide() end
     for _, hitbox in ipairs({ row.priceHitbox, row.valueHitbox }) do
         hitbox.tooltipText = nil
         hitbox:Hide()
@@ -2393,14 +2505,20 @@ function FWR:RenderDisplayRows(frame, shownEntries, layoutDone)
         if row.price and row.value then
             -- the Auction House price of one item, and its worth for what was collected this session
             local priceText, valueText = getEntryPriceTexts(entry)
-            setTextIfChanged(row.price, priceText)
-            setTextIfChanged(row.value, valueText)
+            local unitPrice = FWR.GetAuctionPrice and FWR:GetAuctionPrice(entry.itemID) or nil
+            local totalValue = unitPrice and unitPrice * (tonumber(entry.quantityCount) or 0) or nil
+            -- with a price the cells draw it; without, the small text says "-"
+            setTextIfChanged(row.price, unitPrice and "" or "-")
+            setTextIfChanged(row.value, unitPrice and "" or "-")
+            setMoneyCell(row.priceCell, unitPrice)
+            setMoneyCell(row.valueCell, totalValue)
 
             -- each cell shows what the other one is: the price cell the total value, the value cell the price of one item
+            local plainPrice, plainValue = getEntryPricePlainTexts(entry)
             local hasPrice = priceText ~= "-"
             local quantity = tonumber(entry.quantityCount) or 0
-            row.priceHitbox.tooltipText = hasPrice and (valueText .. "\nWhat the " .. quantity .. " collected this session are worth: the quantity times this price.") or nil
-            row.valueHitbox.tooltipText = hasPrice and ("Price per item\n" .. priceText .. " each\nThe value is this price times the session quantity (" .. quantity .. ").") or nil
+            row.priceHitbox.tooltipText = hasPrice and (plainValue .. "\nWhat the " .. quantity .. " collected this session are worth: the quantity times this price.") or nil
+            row.valueHitbox.tooltipText = hasPrice and ("Price per item\n" .. plainPrice .. " each\nThe value is this price times the session quantity (" .. quantity .. ").") or nil
         end
 
         applyQualityDisplay(row, entry.itemQuality)
