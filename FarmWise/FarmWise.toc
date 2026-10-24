@@ -2,7 +2,7 @@
 ## Title: FarmWise
 ## Notes: Farm smarter, zone by zone
 ## Version: 4.5.43
-## Author: ChrGeo/
+## Author: Gchris
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## SavedVariables: FarmWiseDB, FarmWiseReforgedDB, FarmWiseReforgedSettingsDB
 
