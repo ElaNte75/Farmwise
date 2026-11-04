@@ -22,6 +22,10 @@ local function nowSeconds()
     return GetTime and GetTime() or 0
 end
 
+local function isSecret(value)
+    return issecretvalue ~= nil and issecretvalue(value) == true
+end
+
 function FWR:EnsureAcquisitionContextState()
     self:EnsureDatabases()
     self.DB.renderState = self.DB.renderState or {}
@@ -40,7 +44,7 @@ function FWR:EnsureAcquisitionContextState()
     ctx.professionContext = type(ctx.professionContext) == "string" and ctx.professionContext or nil
     ctx.startedAt = tonumber(ctx.startedAt)
     ctx.expiresAt = tonumber(ctx.expiresAt)
-    ctx.spellID = tonumber(ctx.spellID)
+    ctx.spellID = isSecret(ctx.spellID) and nil or tonumber(ctx.spellID)
     return ctx
 end
 
@@ -76,7 +80,7 @@ function FWR:BeginAcquisitionContext(activeType, durationSeconds, spellID, profe
     ctx.professionContext = type(professionContext) == "string" and professionContext or nil
     ctx.startedAt = now
     ctx.expiresAt = now + (tonumber(durationSeconds) or 0)
-    ctx.spellID = tonumber(spellID)
+    ctx.spellID = isSecret(spellID) and nil or tonumber(spellID)
     return ctx
 end
 
@@ -85,6 +89,9 @@ function FWR:HandleProcessingSpellcastSucceeded(unitToken, castGUID, spellID)
         return
     end
 
+    if isSecret(spellID) then
+        return
+    end
     spellID = tonumber(spellID)
     local spellData = spellID and PROCESSING_SPELLS[spellID] or nil
     if not spellData then
@@ -147,7 +154,7 @@ local function extractCraftedResultIdentity(...)
     local argCount = select("#", ...)
     for index = 1, argCount do
         local value = select(index, ...)
-        if type(value) == "string" then
+        if type(value) == "string" and not isSecret(value) then
             if not identity.itemLink and value:find("|Hitem:", 1, true) then
                 identity.itemLink = value
                 identity.itemID = identity.itemID or GetItemInfoInstant(value)
@@ -155,7 +162,7 @@ local function extractCraftedResultIdentity(...)
             elseif not identity.itemName and not value:find("|H", 1, true) then
                 identity.itemName = value
             end
-        elseif type(value) == "number" then
+        elseif type(value) == "number" and not isSecret(value) then
             local numberValue = tonumber(value)
             if numberValue and numberValue > 0 and numberValue == math.floor(numberValue) then
                 identity.itemID = identity.itemID or numberValue

@@ -45,8 +45,12 @@ local ITEM_TYPE_RULES = {
     { itemType = "Reagent", tooltip = { "crafting reagent", "optional reagent" }, subtype = { "reagent" }, type = {} },
 }
 
+local function isSecret(value)
+    return issecretvalue ~= nil and issecretvalue(value) == true
+end
+
 local function normalizeText(value)
-    if type(value) ~= "string" then
+    if type(value) ~= "string" or isSecret(value) then
         return nil
     end
     value = value:gsub("^%s+", ""):gsub("%s+$", "")
@@ -72,6 +76,9 @@ local function getCurrentZoneName()
 end
 
 local function getSpellName(spellID)
+    if isSecret(spellID) then
+        return nil
+    end
     spellID = tonumber(spellID)
     if spellID and C_Spell and C_Spell.GetSpellName then
         local ok, spellName = pcall(C_Spell.GetSpellName, spellID)
@@ -219,7 +226,7 @@ function FWR:EnsureHerbalismRouteState()
     local state = self.DB.herbalismRoute
     state.castActive = state.castActive == true
     state.castGUID = type(state.castGUID) == "string" and state.castGUID or nil
-    state.spellID = tonumber(state.spellID)
+    state.spellID = isSecret(state.spellID) and nil or tonumber(state.spellID)
     state.spellName = type(state.spellName) == "string" and state.spellName or nil
     state.startedAt = tonumber(state.startedAt)
     state.batchActive = state.batchActive == true
@@ -302,8 +309,8 @@ function FWR:HandleHerbalismSpellcastStart(unitToken, castGUID, spellID)
 
     local state = self:EnsureHerbalismRouteState()
     state.castActive = true
-    state.castGUID = castGUID
-    state.spellID = tonumber(spellID)
+    state.castGUID = isSecret(castGUID) and nil or castGUID
+    state.spellID = isSecret(spellID) and nil or tonumber(spellID)
     state.spellName = spellName
     state.startedAt = GetTime and GetTime() or 0
 
@@ -315,7 +322,7 @@ function FWR:HandleHerbalismSpellcastCancelled(unitToken, castGUID, spellID, rea
     end
 
     local state = self:EnsureHerbalismRouteState()
-    local isMatch = state.castActive == true and (not spellID or tonumber(spellID) == state.spellID)
+    local isMatch = state.castActive == true and (not spellID or isSecret(spellID) or tonumber(spellID) == state.spellID)
     if not isMatch then
         return
     end
@@ -334,7 +341,7 @@ function FWR:HandleHerbalismSpellcastSucceeded(unitToken, castGUID, spellID)
     end
 
     local state = self:EnsureHerbalismRouteState()
-    local isMatch = state.castActive == true and (not spellID or tonumber(spellID) == state.spellID)
+    local isMatch = state.castActive == true and (not spellID or isSecret(spellID) or tonumber(spellID) == state.spellID)
     if not isMatch then
         return
     end

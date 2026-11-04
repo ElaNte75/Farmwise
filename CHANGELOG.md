@@ -3,6 +3,19 @@
 Version numbers are `major.minor.week`: the last number is the week of the year of the update, the middle
 one grows when settings or behaviour change.
 
+## 4.6.45
+
+**New**
+- **WoW Forever is supported.** One FarmWise now runs on Retail and on WoW Forever (interface 16001). Copy the
+  **FarmWise** folder into `_retail_` or into `_forever_` `/Interface/AddOns/`. Forever support is new: if
+  something does not work there, please report it.
+- Gathering detection (mining, herbalism, fishing, skinning) and crafting results are protected against the
+  game's "secret values": when the game hides a spell, FarmWise skips it instead of showing an error.
+- A second file, `FarmWise_Forever.toc`, is included for the Forever client.
+
+**Changed**
+- Includes the latest small improvements to the main window, the launcher icon, the manual and the sell filter menu.
+
 ## 4.5.43
 
 **New**

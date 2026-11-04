@@ -156,8 +156,8 @@ function FWR:CreateLauncherIcon()
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ICON_SIZE, ICON_SIZE)
     icon:SetPoint("CENTER", 0, 1)
-    icon:SetTexture("Interface/Icons/INV_Misc_Herb_16")
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    icon:SetTexture("Interface/AddOns/FarmWise/Media/icon.tga")
+    icon:SetTexCoord(0.03, 0.97, 0.03, 0.97)
     button.icon = icon
 
     local border = button:CreateTexture(nil, "OVERLAY")

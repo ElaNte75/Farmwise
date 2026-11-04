@@ -4,11 +4,12 @@ Farm smarter, zone by zone. FarmWise tracks your own farming (materials, time, g
 sub-zone, and its **Advisor** tells you where to go for the most of an item or the most gold per hour,
 based on how *you* play and on current Auction House prices.
 
-For World of Warcraft Retail (Midnight, interface 120100).
+For World of Warcraft **Retail** (Midnight, interface 120100 - 120107) and **WoW Forever** (interface 16001).
 
 ## Install
 1. Download this repository as ZIP (Code > Download ZIP) and unzip it.
-2. Copy the inner **FarmWise** folder into `World of Warcraft/_retail_/Interface/AddOns/`.
+2. Copy the inner **FarmWise** folder into `World of Warcraft/_retail_/Interface/AddOns/` (Retail) or
+   `World of Warcraft/_forever_/Interface/AddOns/` (WoW Forever).
 
 Upgrading from an older FarmWise: your saved statistics are kept and read as they are.
 
