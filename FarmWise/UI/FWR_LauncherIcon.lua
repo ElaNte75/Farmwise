@@ -45,6 +45,17 @@ local function getMinimapShape()
     return "ROUND"
 end
 
+local function getMinimapRadius()
+    local ok, width = pcall(function()
+        return Minimap and Minimap:GetWidth()
+    end)
+    local radius = ok and tonumber(width) or nil
+    if radius and radius > 0 then
+        return radius / 2 + 8
+    end
+    return MINIMAP_RADIUS
+end
+
 local function placeOnMinimap(button, angle)
     if not button or not Minimap then
         return
@@ -70,7 +81,7 @@ local function placeOnMinimap(button, angle)
         end
     end
 
-    local radius = MINIMAP_RADIUS
+    local radius = getMinimapRadius()
     if quadTable[q] == false then
         x = math.max(-radius, math.min(x * radius, radius))
         y = math.max(-radius, math.min(y * radius, radius))
