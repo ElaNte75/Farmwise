@@ -3,6 +3,15 @@
 Version numbers are `major.minor.week`: the last number is the week of the year of the update, the middle
 one grows when settings or behaviour change.
 
+## 4.7.45
+
+**Fixed**
+- A third toc file, `FarmWise_Camelot.toc`, is included: Forever clients that look for the Camelot
+  game type now pick it instead of the retail one, so the addon is no longer flagged as belonging
+  to Retail.
+- The minimap launcher icon is placed from the actual minimap size instead of a fixed distance, so
+  it sits on the rim in WoW Forever too.
+
 ## 4.6.45
 
 **New**
