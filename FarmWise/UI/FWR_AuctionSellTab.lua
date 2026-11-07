@@ -39,7 +39,7 @@ local VISIBLE_ROWS = 17
 local PANEL_PADDING = 8
 local SCROLL_GUTTER = 18      -- room at the right of the lists for the game's own scroll bar
 local PRICE_STEP_PERCENT = 5      -- the "+" and "-" buttons change the price by this much, if the option cannot be read
-local HOURS = { 12, 24, 48 }       -- the posting times; which one is used: the item's own, or the one for all
+local HOURS = FWR.POST_HOURS      -- the posting times; which one is used: the item's own, or the one for all
 local PRICE_QUEUE_SECONDS = 0.6   -- the game limits how fast prices can be asked for
 
 local TRADEGOODS_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods) or 7
@@ -119,6 +119,14 @@ local COIN_GAP, PART_GAP = 3, 3
 local COLUMN = {}
 local SEPARATORS = {}
 
+-- A price stands with its SILVER in the middle of the column (under the middle of the title): from the start of the
+-- gold place to the middle of the silver, and from there to the end of the copper coin
+local function moneyExtents(goldWidth)
+    local left = goldWidth + COIN_GAP + COIN_WIDTH + PART_GAP + SMALL_DIGITS_WIDTH / 2
+    local right = SMALL_DIGITS_WIDTH / 2 + COIN_GAP + COIN_WIDTH + PART_GAP + SMALL_DIGITS_WIDTH + COIN_GAP + COIN_WIDTH
+    return left, right
+end
+
 local function computeLayout(auctionHouseFrame)
     TAB_SETTINGS = FWR.GetSellTabSettings and FWR:GetSellTabSettings() or TAB_SETTINGS
 
@@ -134,15 +142,16 @@ local function computeLayout(auctionHouseFrame)
     FWR.ITEM_COLUMN.width = itemWidth
     NAME_WIDTH = itemWidth
 
-    -- The price: gold (up to six digits, growing to the left) and silver (two digits), each in a place of its
-    -- own, so the numbers of all the rows stand in columns. Prices of the Auction House are in whole silver, so
-    -- there is no place for copper (a price that does have copper is still written in full, see showMoney).
+    -- The price: gold (up to six digits, growing to the left), silver and copper (two digits each), each in a
+    -- place of its own, so the numbers of all the rows stand in columns (WoW Forever has prices with copper).
     -- The gold column holds six digits (999999) and grows, for good, if a price ever needs more.
-    GOLD_DIGITS = math.max(6, math.floor(savedWidth("goldDigits")))
+    GOLD_DIGITS = math.max(4, math.floor(savedWidth("goldDigits")))
     -- (the measured width is a little short of what is drawn: one more pixel for each digit)
     GOLD_DIGITS_WIDTH = textWidth(NUMBER_FONT, string.rep("9", GOLD_DIGITS)) + GOLD_DIGITS + 2
     SMALL_DIGITS_WIDTH = textWidth(NUMBER_FONT, "99") + 2
-    PRICE_WIDTH = GOLD_DIGITS_WIDTH + COIN_GAP + COIN_WIDTH + PART_GAP + SMALL_DIGITS_WIDTH + COIN_GAP + COIN_WIDTH + 8
+    SMALL_DIGITS_WIDTH = SMALL_DIGITS_WIDTH + SMALL_DIGITS_WIDTH % 2   -- even, so the middle of the silver is whole
+    local priceLeft, priceRight = moneyExtents(GOLD_DIGITS_WIDTH)
+    PRICE_WIDTH = 2 * math.max(priceLeft, priceRight) + 8
 
     -- In bags: wide enough for its title on one line and for four digits. Amount: as wide as its title.
     OWNED_WIDTH = math.max(math.max(textWidth(NUMBER_FONT, "9999"), textWidth(TITLE_FONT, "In bags")) + 10,
@@ -151,9 +160,10 @@ local function computeLayout(auctionHouseFrame)
     TREND_WIDTH = textWidth(TITLE_FONT, "Trend") + 8
 
     -- Value: what the whole amount brings after the 5% cut, in gold (up to six digits) and silver, like the price
-    VALUE_GOLD_DIGITS = math.max(6, math.floor(savedWidth("valueGoldDigits")))
+    VALUE_GOLD_DIGITS = math.max(4, math.floor(savedWidth("valueGoldDigits")))
     VALUE_GOLD_WIDTH = textWidth(NUMBER_FONT, string.rep("9", VALUE_GOLD_DIGITS)) + VALUE_GOLD_DIGITS + 2
-    VALUE_WIDTH = math.max(VALUE_GOLD_WIDTH + 3 + 10 + 3 + textWidth(NUMBER_FONT, "99") + 2 + 3 + 10 + 8,
+    local valueLeft, valueRight = moneyExtents(VALUE_GOLD_WIDTH)
+    VALUE_WIDTH = math.max(2 * math.max(valueLeft, valueRight) + 8,
         textWidth(TITLE_FONT, "Value (-5% cut)") + 8)
 
     -- The columns, from the left, one after the other, starting right after the name: In bags, "-", the price,
@@ -755,13 +765,14 @@ end
 
 -- the two places of a price in a column: { gold = { text, icon }, silver = { text, icon } }, centred in it
 local function createMoneySlots(row, column, goldWidth)
-    local total = goldWidth + COIN_GAP + COIN_WIDTH + PART_GAP + SMALL_DIGITS_WIDTH + COIN_GAP + COIN_WIDTH
-    local x = column.left + math.floor((column.width - total) / 2)
+    local silverMiddle = moneyExtents(goldWidth)   -- from the start of the gold to the middle of the silver
+    local x = column.left + math.floor(column.width / 2 - silverMiddle)
 
     local slots = {}
     local specs = {
         { "gold", goldWidth, "Coin-Gold" },
         { "silver", SMALL_DIGITS_WIDTH, "Coin-Silver" },
+        { "copper", SMALL_DIGITS_WIDTH, "Coin-Copper" },
     }
     for _, spec in ipairs(specs) do
         local text = row:CreateFontString(nil, "OVERLAY", NUMBER_FONT)
@@ -798,7 +809,21 @@ local function renderNote(slots, note, width, text, unbounded)
     for _, slot in pairs(slots) do
         showSlot(slot, nil)
     end
-    note:SetWidth(unbounded and 0 or width)
+    -- the place the note was made in (left edge of its column), kept the first time: a text of its own width
+    -- (unbounded) is centred in the column, any other text goes back to the column's left edge with the column width
+    if not note.fwAnchor then
+        local point, relativeTo, relativePoint, x, y = note:GetPoint()
+        note.fwAnchor = { point, relativeTo, relativePoint, x, y }
+    end
+    local anchor = note.fwAnchor
+    note:ClearAllPoints()
+    if unbounded then
+        note:SetPoint("CENTER", anchor[2], anchor[3], anchor[4] + width / 2, anchor[5])
+        note:SetWidth(0)
+    else
+        note:SetPoint(anchor[1], anchor[2], anchor[3], anchor[4], anchor[5])
+        note:SetWidth(width)
+    end
     note:SetText(text)
     note:Show()
 end
@@ -810,19 +835,7 @@ local function renderMoney(slots, note, width, copper, goldDigits, rememberKey)
     copper = math.max(0, math.floor(tonumber(copper) or 0))
     local gold = math.floor(copper / 10000)
     local silver = math.floor((copper % 10000) / 100)
-
-    if copper % 100 ~= 0 then
-        local parts = {}
-        if gold > 0 then
-            parts[#parts + 1] = string.format("%.0f", gold) .. "|A:Coin-Gold:12:10|a"
-        end
-        if gold > 0 or silver > 0 then
-            parts[#parts + 1] = silver .. "|A:Coin-Silver:12:10|a"
-        end
-        parts[#parts + 1] = (copper % 100) .. "|A:Coin-Copper:12:10|a"
-        renderNote(slots, note, width, table.concat(parts, " "), true)
-        return
-    end
+    local rest = copper % 100
 
     local digits = #tostring(gold)
     if digits > goldDigits then
@@ -835,7 +848,14 @@ local function renderMoney(slots, note, width, copper, goldDigits, rememberKey)
 
     note:Hide()
     showSlot(slots.gold, gold > 0 and gold or nil)
-    showSlot(slots.silver, silver)
+    -- gold, silver and copper each in a place of their own, so the numbers of all the rows stand in columns; a part
+    -- that is 0 is left out when nothing bigger stands before it (silver stays when there is gold, or when there is
+    -- no copper either)
+    showSlot(slots.silver, (silver > 0 or gold > 0 or rest == 0) and silver or nil)
+    -- (copper is written, even as 0, whenever there is silver or gold before it: "2 silver 0 copper")
+    -- (two digits then: "00", "05")
+    local higher = silver > 0 or gold > 0
+    showSlot(slots.copper, (rest > 0 or higher) and (higher and string.format("%02d", rest) or rest) or nil)
 end
 
 local function showNote(row, text, unbounded)
@@ -859,6 +879,7 @@ local function showMoney(row, copper, fixed)
     renderMoney(row.money, row.price, COLUMN.price.width, copper, GOLD_DIGITS, "goldDigits")
     paintPrice(row.money.gold, fixed == true)
     paintPrice(row.money.silver, fixed == true)
+    paintPrice(row.money.copper, fixed == true)
 end
 
 -- the value of the whole amount: after the 5% cut of the Auction House, in whole silver
@@ -867,7 +888,7 @@ local function showValue(row, entry)
         return
     end
     if entry.price and entry.quantity and not entry.leftOut and entry.sellable and entry.sellable >= 1 then
-        local total = math.floor(math.floor(entry.price * math.min(entry.quantity, entry.sellable) * 0.95) / 100) * 100
+        local total = math.floor(entry.price * math.min(entry.quantity, entry.sellable) * 0.95)
         renderMoney(row.valueMoney, row.valueNote, COLUMN.value.width, total, VALUE_GOLD_DIGITS, "valueGoldDigits")
     else
         renderNote(row.valueMoney, row.valueNote, COLUMN.value.width, "", false)
@@ -994,6 +1015,20 @@ local function addAverageLines(entry)
 end
 
 -- Starts the post of the amount shown for an item. Returns true when the game took it, false when not.
+-- The deposit the game asks for this post (it tells the amount itself: it can be a minimum of any size, and it can
+-- change), and whether the character has not enough gold for it. Not known (nil): the post is not held back.
+local function depositNeeded(entry)
+    if not (FWR.GetPostDeposit and entry.itemID and entry.quantity) then
+        return nil
+    end
+    return FWR:GetPostDeposit(entry.itemID, entry.duration or TAB_SETTINGS.duration, entry.quantity)
+end
+
+local function cannotPayDeposit(entry)
+    local deposit = depositNeeded(entry)
+    return deposit ~= nil and GetMoney and deposit > (tonumber(GetMoney()) or 0), deposit
+end
+
 local function postEntry(entry)
     if not entry.price or entry.quantity < 1 or entry.notCommodity then
         return false
@@ -1017,6 +1052,12 @@ local function postEntry(entry)
             return false
         end
         quantity = math.min(quantity, available)
+    end
+
+    if cannotPayDeposit(entry) then
+        postedNote = "Not enough gold for the deposit."
+        refreshRows()
+        return false
     end
 
     postedNote = string.format("Posting %d x %s...", quantity, tostring(entry.name))
@@ -1070,6 +1111,9 @@ local function postIsReady(entry)
         return false
     end
     if entry.average and entry.price < entry.average then
+        return false
+    end
+    if cannotPayDeposit(entry) then
         return false
     end
     return priceZone(entry) ~= "low"
@@ -1450,6 +1494,32 @@ local function createRow(index)
     row.post:SetText("Post")
     place(row.post, COLUMN.post)
 
+    -- the orange "!" at the right of Post: the gold does not reach for the deposit of this post
+    row.depositMark = CreateFrame("Frame", nil, row)
+    row.depositMark:SetSize(MARK_WIDTH, ROW_HEIGHT)
+    row.depositMark:SetPoint("LEFT", row, "LEFT", COLUMN.post.left + COLUMN.post.width + 3, 0)
+    row.depositMark:EnableMouse(true)
+    local depositText = row.depositMark:CreateFontString(nil, "OVERLAY")
+    depositText:SetFont((Number14FontWhite and Number14FontWhite:GetFont()) or "Fonts/ARIALN.TTF", 14, "OUTLINE")
+    depositText:SetText("!")
+    depositText:SetTextColor(1, 0.5, 0)
+    depositText:SetPoint("CENTER")
+    row.depositMark:SetScript("OnEnter", function(frame)
+        local entry = row.entry
+        if not entry or not tipBegin(frame, "ANCHOR_TOP", "Deposit") then
+            return
+        end
+        local _, deposit = cannotPayDeposit(entry)
+        tipLine("Not enough gold for the deposit", TIP_WHITE)
+        if deposit then
+            tipPair("Deposit asked", money(deposit))
+            tipPair("You have", money(tonumber(GetMoney and GetMoney()) or 0))
+        end
+        tipEnd()
+    end)
+    row.depositMark:SetScript("OnLeave", GameTooltip_Hide)
+    row.depositMark:Hide()
+
     row.minus:SetScript("OnClick", function()
         if row.entry then
             changePrice(row.entry, -1)
@@ -1504,9 +1574,11 @@ local function createRow(index)
             tipLine("Held back: below your average price", TIP_WHITE)
         elseif zoneNow == "low" then
             tipLine("Held back: the price is unusually low", TIP_WHITE)
+        elseif cannotPayDeposit(entry) then
+            tipLine("Held back: not enough gold for the deposit", TIP_WHITE)
         end
         local hours = HOURS[entry.duration or TAB_SETTINGS.duration]
-        local deposit = FWR.GetPostDeposit and FWR:GetPostDeposit(entry.itemID, entry.duration, entry.quantity)
+        local deposit = depositNeeded(entry)
         tipLine(string.format("%d x %s", entry.quantity, tostring(entry.name)), TIP_WHITE)
         tipPair("Price each", money(entry.price))
         tipPair("You receive (-5% cut)", money(entry.price * entry.quantity * 0.95), TIP_GOOD)
@@ -1723,7 +1795,10 @@ refreshRows = function()
             local usable = entry.price ~= nil and not entry.notCommodity and not entry.leftOut
             local zone = priceZone(entry)
             local belowAverage = usable and entry.average ~= nil and entry.price < entry.average
-            row.post:SetEnabled(usable and entry.sellable >= 1 and entry.quantity >= 1 and zone ~= "low" and not belowAverage)
+            row.post:SetEnabled(usable and entry.sellable >= 1 and entry.quantity >= 1 and zone ~= "low" and not belowAverage
+                and not cannotPayDeposit(entry))
+            -- the "!" at the right of Post: the gold does not reach for the deposit
+            row.depositMark:SetShown(usable and not entry.leftOut and (cannotPayDeposit(entry)))
 
             -- "-" cannot go below the lowest usual price or your average price: it is off once the price is there
             local minusAllowed = usable
@@ -2364,6 +2439,7 @@ events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("AUCTION_HOUSE_POST_ERROR")
 events:RegisterEvent("BAG_UPDATE_DELAYED")
 events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+events:RegisterEvent("PLAYER_MONEY")
 events:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         if ... == "Blizzard_AuctionHouseUI" then
@@ -2422,6 +2498,11 @@ events:SetScript("OnEvent", function(_, event, ...)
                     refreshRows()
                 end
             end
+        end
+    elseif event == "PLAYER_MONEY" then
+        -- the gold changed: whether the deposits can be paid changes with it
+        if panel and panel:IsShown() then
+            refreshRows()
         end
     elseif event == "BAG_UPDATE_DELAYED" then
         if panel and panel:IsShown() then

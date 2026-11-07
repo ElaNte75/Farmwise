@@ -26,7 +26,7 @@ local GetCoinText = _G.GetCoinText or (C_CurrencyInfo and C_CurrencyInfo.GetCoin
 end
 
 local KEEP_CHOICES = { 10, 20, 50, 100 }
-local HOURS = { 12, 24, 48 }
+local HOURS = FWR.POST_HOURS
 local POPUP_KEY = "FARMWISE_KEEP_AMOUNT"
 
 local function editBoxOf(popup)

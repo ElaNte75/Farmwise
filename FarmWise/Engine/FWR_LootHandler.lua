@@ -96,7 +96,48 @@ function FWR:RetryPendingRoutedLootEntry(itemLink, quantity, attempts)
     end
 end
 
+-- "You create: ..." is always the result of a profession craft (e.g. Light Leather made from scraps), never
+-- something gathered. It is skipped here directly, because in WoW Forever this chat line arrives BEFORE the
+-- game's "item crafted" event, so the crafting window opened by that event comes too late to catch it.
+local craftedResultPatterns = nil
+
+local function buildCraftedResultPatterns()
+    local patterns = {}
+    for _, format in ipairs({ _G.LOOT_ITEM_CREATED_SELF, _G.LOOT_ITEM_CREATED_SELF_MULTIPLE }) do
+        if type(format) == "string" and format ~= "" then
+            local pattern = format:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+            pattern = pattern:gsub("%%s", ".+"):gsub("%%d", "%%d+")
+            patterns[#patterns + 1] = "^" .. pattern .. "$"
+        end
+    end
+    return patterns
+end
+
+local function isCraftedResultMessage(message)
+    local ok, result = pcall(function()
+        if type(message) ~= "string" or message == "" then
+            return false
+        end
+        craftedResultPatterns = craftedResultPatterns or buildCraftedResultPatterns()
+        for _, pattern in ipairs(craftedResultPatterns) do
+            if message:match(pattern) then
+                return true
+            end
+        end
+        return false
+    end)
+    return ok and result == true
+end
+
+function FWR:IsCraftedResultMessage(message)
+    return isCraftedResultMessage(message)
+end
+
 function FWR:HandleLootChatMessage(message)
+    if isCraftedResultMessage(message) then
+        return
+    end
+
     local lootEntries = extractLootEntries(message)
     if #lootEntries == 0 then
         return

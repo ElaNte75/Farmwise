@@ -177,11 +177,10 @@ function FWR:CreateLauncherIcon()
     border:SetTexture("Interface/Minimap/MiniMap-TrackingBorder")
     button.border = border
 
-    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-    highlight:SetSize(23, 23)
-    highlight:SetPoint("CENTER", 0, 1)
-    highlight:SetTexture("Interface/Minimap/UI-Minimap-ZoomButton-Highlight")
-    button.highlight = highlight
+    -- Same hover glow as the game's own minimap buttons: the highlight texture is
+    -- drawn additively, so its black background stays invisible over the icon.
+    button:SetHighlightTexture("Interface/Minimap/UI-Minimap-ZoomButton-Highlight", "ADD")
+    button.highlight = button:GetHighlightTexture()
 
     button:SetScript("OnClick", function(_, mouseButton)
         if mouseButton == "LeftButton" then

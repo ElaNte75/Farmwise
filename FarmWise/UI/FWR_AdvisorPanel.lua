@@ -831,6 +831,10 @@ function FWR:ToggleAdvisorPanel()
         panel:Hide()
     else
         mode = MODE_GOLD -- the Advisor always opens on Gold
+        -- the options window and the Advisor are never open together (they would lie on top of each other)
+        if FWR.ControlPanelWindow and FWR.ControlPanelWindow:IsShown() then
+            FWR.ControlPanelWindow:Hide()
+        end
         panel:Show()
     end
 end

@@ -2251,6 +2251,10 @@ function FWR:OpenControlPanelWindow()
     if self.ApplySettingsVisibilityRules then
         self:ApplySettingsVisibilityRules(true)
     end
+    -- the options window and the Advisor are never open together (they would lie on top of each other)
+    if self.AdvisorPanel and self.AdvisorPanel:IsShown() then
+        self.AdvisorPanel:Hide()
+    end
     frame:Show()
     frame:Raise()
 end

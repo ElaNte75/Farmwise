@@ -111,7 +111,7 @@ FWR.ManualChapters = {
             "Post next (button at the bottom right) posts the next item that is ready. With \"Use the mouse wheel to post the next item\" on, you scroll instead of clicking. By default it needs Shift held down, so a scroll by accident never posts.",
             "",
             "# Posting time",
-            "FarmWise AH > Options chooses 12, 24 or 48 hours for all items. An item can have its own time (right-click it). The deposit is shown in the tooltip of Post.",
+            "FarmWise AH > Options chooses the posting time for all items (12, 24 or 48 hours; in WoW Forever 2, 8 or 24 hours). An item can have its own time (right-click it). The deposit is shown in the tooltip of Post.",
             "",
             "# Left out items",
             "An item is left out of the list when you hid it, when you keep all of it in your bags, or when a vendor pays more than the Auction House (after its 5%). \"Show hidden items\" at the bottom lists them and says why. Their tooltip also tells it."
@@ -130,7 +130,7 @@ FWR.ManualChapters = {
             "Choose how many to keep (10, 20, 50, 100 or your own number). The list only offers what is over that number.",
             "",
             "# Posting time",
-            "12, 24 or 48 hours for this item only. The general choice is in the options.",
+            "One of the posting times (12, 24 or 48 hours; in WoW Forever 2, 8 or 24) for this item only. The general choice is in the options.",
             "",
             "# Price check",
             "Turns the price check on or off for this item. See the next chapter.",

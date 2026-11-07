@@ -3,6 +3,21 @@
 Version numbers are `major.minor.week`: the last number is the week of the year of the update, the middle
 one grows when settings or behaviour change.
 
+## Unreleased
+
+**Fixed**
+- Items you make with a profession (for example Light Leather from Ruined Leather Scraps) are no longer counted
+  as gathered loot. In WoW Forever the "You create" chat line arrives before the game's crafting event, so
+  FarmWise now skips every "You create" line directly.
+- The minimap icon no longer shows a dark square over itself on mouse-over: it lights up like the game's own
+  minimap buttons.
+
+**Changed**
+- WoW Forever: auction post times show 2 / 8 / 24 hours (Retail keeps 12 / 24 / 48).
+- Sell list prices and values are aligned in gold / silver / copper places, with copper precision.
+- Post is disabled, with an orange "!" and a tooltip, when you cannot pay the deposit the game asks for.
+- The Options window and the Advisor no longer open at the same time.
+
 ## 4.7.45
 
 **Fixed**

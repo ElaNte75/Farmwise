@@ -1,32 +1,52 @@
-# FarmWise ship script
-# 1) Sets the last number of the version in FarmWise.toc to the current week of the year (ISO week)
+# FarmWise ship script (one addon for Retail and WoW Forever)
+# 1) Sets the last number of the version in FarmWise.toc and FarmWise_Forever.toc to the current week of the year (ISO week)
 # 2) Builds Desktop\FarmWise-<version>.zip with only the FarmWise folder inside, ready for CurseForge
 #
 # Version numbers are major.minor.week (see CHANGELOG.md): major and minor are never changed here.
+# This folder IS the addon (FarmWise.toc is at its root); the zip gets it under a folder named FarmWise.
 
 [CmdletBinding()]
 param(
-    [switch]$SkipBump
+    [switch]$SkipBump,
+    [switch]$Local,
+    [string]$OutDir
 )
 
 $ErrorActionPreference = "Stop"
 
-$RepoRoot = Split-Path -Parent $PSScriptRoot
-$AddonDir = Join-Path $RepoRoot "FarmWise"
+$Repo = "ElaNte75/Farmwise"
+$AddonFolder = "FarmWise"
+
+$workRoot = $null
+if ($Local) {
+    $AddonDir = Split-Path -Parent $PSScriptRoot
+    Write-Host "Source: local folder $AddonDir"
+} else {
+    $workRoot = Join-Path $env:TEMP ("FarmWise-src-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $workRoot | Out-Null
+    $repoZip = Join-Path $workRoot "repo.zip"
+    Write-Host "Downloading $Repo (main) from GitHub..."
+    Invoke-WebRequest -Uri "https://codeload.github.com/$Repo/zip/refs/heads/main" -OutFile $repoZip
+    Expand-Archive -LiteralPath $repoZip -DestinationPath $workRoot -Force
+    Remove-Item -LiteralPath $repoZip -Force
+    $srcRoot = Get-ChildItem -LiteralPath $workRoot -Directory | Select-Object -First 1
+    $AddonDir = Join-Path $srcRoot.FullName $AddonFolder
+    Write-Host "Source: $Repo @ main -> $AddonDir"
+}
 $TocPath = Join-Path $AddonDir "FarmWise.toc"
 if (-not (Test-Path -LiteralPath $TocPath)) {
     throw "Cannot find FarmWise.toc under $AddonDir"
 }
 
-# nothing diagnostic may go to the zip: the repo copy is made by "FarmWise Sync (game to repo).bat", which leaves it out
+# nothing diagnostic may go to the zip
 $left = Get-ChildItem -LiteralPath $AddonDir -Recurse -Filter *.lua |
     Select-String -CaseSensitive -Pattern '--\s*DEBUG(-BEGIN|-END)?\s*$', 'autoPostTrace', 'salesHistoryTrace', 'listingsRead', 'wheelStats'
 if ($left) {
     $left | ForEach-Object { Write-Host ("  " + $_.Path + ":" + $_.LineNumber + "  " + $_.Line.Trim()) }
-    throw "Diagnostic code is in the addon folder. Run 'FarmWise Sync (game to repo).bat' first."
+    throw "Diagnostic code is in the addon folder. Remove it first."
 }
 
-$DesktopDir = [Environment]::GetFolderPath("Desktop")
+if ($OutDir) { $DesktopDir = $OutDir } else { $DesktopDir = [Environment]::GetFolderPath("Desktop") }
 Write-Host "Addon: $AddonDir"
 
 # the ISO week of the year (Monday first, the week with the first Thursday is week 1)
@@ -38,10 +58,10 @@ function Get-IsoWeek([datetime]$date) {
     return $calendar.GetWeekOfYear($thursday, [System.Globalization.CalendarWeekRule]::FirstFourDayWeek, [DayOfWeek]::Monday)
 }
 
-$lines = Get-Content -LiteralPath $TocPath
-$versionLine = $lines | Where-Object { $_ -match '^##\s*Version\s*:' } | Select-Object -First 1
-if (-not $versionLine) { throw "No ## Version line in FarmWise.toc" }
-$current = ($versionLine -split ":", 2)[1].Trim()
+$text = [IO.File]::ReadAllText($TocPath)
+$m = [regex]::Match($text, '(?m)^##\s*Version\s*:\s*(.*?)\r?$')
+if (-not $m.Success) { throw "No ## Version line in FarmWise.toc" }
+$current = $m.Groups[1].Value.Trim()
 
 if ($current -notmatch '^(\d+)\.(\d+)\.(\d+)(.*)$') {
     throw "The version '$current' is not major.minor.week (optionally followed by a word like beta)"
@@ -56,18 +76,27 @@ if ($SkipBump) {
 } else {
     $week = Get-IsoWeek (Get-Date)
     $version = "$major.$minor.$week$suffix"
-    $out = foreach ($line in $lines) {
-        if ($line -match '^##\s*Version\s*:') { "## Version: $version" } else { $line }
+    # both toc files carry the same version; a file keeps its own byte order mark and line endings
+    foreach ($name in "FarmWise.toc", "FarmWise_Forever.toc", "FarmWise_Camelot.toc") {
+        $p = Join-Path $AddonDir $name
+        if (-not (Test-Path -LiteralPath $p)) { continue }
+        $bytes = [IO.File]::ReadAllBytes($p)
+        $bom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+        $t = [IO.File]::ReadAllText($p)
+        $t = [regex]::Replace($t, '(?m)^(##\s*Version\s*:\s*).*?(\r?)$', ('${1}' + $version + '${2}'))
+        [IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($bom)))
     }
-    Set-Content -LiteralPath $TocPath -Value $out -Encoding UTF8
     Write-Host "Version: $current  ->  $version  (week $week)"
 }
 
-# what goes into the zip: the FarmWise folder, and nothing else
+# what goes into the zip: the addon files under a folder named FarmWise, and nothing else
 $staging = Join-Path $env:TEMP ("FarmWise-ship-" + [guid]::NewGuid().ToString("N"))
 $stageAddon = Join-Path $staging "FarmWise"
 New-Item -ItemType Directory -Force -Path $stageAddon | Out-Null
-Copy-Item -Path (Join-Path $AddonDir "*") -Destination $stageAddon -Recurse -Force
+$skipTop = @("scripts", "tests", "_reference", ".git", ".gitignore", "AGENTS.md", "NOTES.md", "README.md", "CHANGELOG.md")
+Get-ChildItem -LiteralPath $AddonDir -Force | Where-Object {
+    ($skipTop -notcontains $_.Name) -and ($_.Extension -notin ".bat", ".ps1", ".zip")
+} | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $stageAddon -Recurse -Force }
 
 # working leftovers never go to the zip
 Get-ChildItem -Path $stageAddon -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
@@ -97,8 +126,9 @@ try {
     $archive.Dispose()
 }
 Remove-Item -LiteralPath $staging -Recurse -Force
+if ($workRoot) { Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue }
 
 Write-Host ""
 Write-Host "DONE"
-Write-Host "Zip ready on Desktop: $zipPath"
+Write-Host "Zip ready: $zipPath"
 Write-Host "It holds only the FarmWise folder. Upload it to CurseForge."

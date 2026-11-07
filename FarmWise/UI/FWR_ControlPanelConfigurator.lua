@@ -353,9 +353,9 @@ FWR.UI_CONFIG.ControlPanelWindow = {
             },
             durationTitle = "Post for:",
             durations = {
-                { value = 1, label = "12 hours" },
-                { value = 2, label = "24 hours" },
-                { value = 3, label = "48 hours" },
+                { value = 1, label = FWR.POST_HOURS[1] .. " hours" },
+                { value = 2, label = FWR.POST_HOURS[2] .. " hours" },
+                { value = 3, label = FWR.POST_HOURS[3] .. " hours" },
             },
             priceStep = {
                 title = "Each click on + or - changes the price by:",
