@@ -25,7 +25,7 @@ FWR.DEFAULT_SETTINGS = {
         showMainWindowOnGameLoad = true,
         mainWindowVisible = true,
         launcherMinimap = {
-            hide = false,
+            hide = true,   -- FarmWise is in the game's addon menu; the minimap button is shown from the Control Panel
             angle = 220,
         },
         hideMainWindowInCombat = false,

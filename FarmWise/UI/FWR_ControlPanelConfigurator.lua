@@ -94,6 +94,7 @@ FWR.UI_CONFIG.ControlPanelWindow = {
                 { key = "window", title = "Main window" },
                 { key = "floatText", title = "Loot text while minimized" },
                 { key = "panels", title = "Control panels" },
+                { key = "minimap", title = "Minimap" },
                 { key = "layout", title = "Window layout" },
             },
             options = {
@@ -112,6 +113,8 @@ FWR.UI_CONFIG.ControlPanelWindow = {
                   tooltip = "A loot that is worth at least the value chosen with the slider below comes in bigger letters, with a sound. Off: no alert, and the slider does nothing. It works only while the loot text is on." },
                 { key = "hideControlPanelsInCombat", section = "panels", label = "Hide the control panels during combat", defaultValue = true },
                 { key = "restoreControlPanelsAfterCombat", section = "panels", label = "Show the control panels again after combat", defaultValue = true },
+                { key = "showMinimapButton", section = "minimap", label = "Show the minimap button", defaultValue = false, launcherMinimap = true,
+                  tooltip = "FarmWise is always in the game's addon menu next to the minimap (left click: main window, right click: Control Panel). Tick this to also have its own button on the edge of the minimap." },
             },
         },
 

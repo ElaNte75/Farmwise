@@ -3,7 +3,12 @@
 Version numbers are `major.minor.week`: the last number is the week of the year of the update, the middle
 one grows when settings or behaviour change.
 
-## Unreleased
+## 4.8.47
+
+**Changed**
+- FarmWise is in the game's add-on menu next to the minimap (left click: main window, right click: Control
+  Panel), so its own minimap button now starts hidden. Tick **Show the minimap button** in Control Panel >
+  Interface > Minimap to show it again.
 
 **Fixed**
 - Items you make with a profession (for example Light Leather from Ruined Leather Scraps) are no longer counted

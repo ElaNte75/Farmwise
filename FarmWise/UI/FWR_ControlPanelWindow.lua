@@ -896,11 +896,27 @@ local function createInterfacePage(parent, frame)
             check.Text:SetText(option.label)
         end
 
-        check:SetChecked(getBooleanSetting(option.key, option.defaultValue))
+        if option.launcherMinimap then
+            -- kept in the minimap button's own settings (shown = not hidden); read again each time the page opens
+            check:SetChecked(FWR.IsLauncherMinimapShown and FWR:IsLauncherMinimapShown() or false)
+            page:HookScript("OnShow", function()
+                check:SetChecked(FWR.IsLauncherMinimapShown and FWR:IsLauncherMinimapShown() or false)
+                updateCheckboxVisual(check)
+            end)
+        else
+            check:SetChecked(getBooleanSetting(option.key, option.defaultValue))
+        end
         updateCheckboxVisual(check)
         attachTooltip(check, option.label, option.tooltip)
         check:SetScript("OnClick", function(self)
             local checked = self:GetChecked() == true
+            if option.launcherMinimap then
+                if FWR.SetLauncherMinimapShown then
+                    FWR:SetLauncherMinimapShown(checked)
+                end
+                updateCheckboxVisual(self)
+                return
+            end
             setBooleanSetting(option.key, checked)
             updateCheckboxVisual(self)
             refreshInterfaceDependencies(frame)

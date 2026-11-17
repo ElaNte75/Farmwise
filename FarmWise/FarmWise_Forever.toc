@@ -1,9 +1,12 @@
 ## Interface: 16001
 ## Title: FarmWise
 ## Notes: Farm smarter, zone by zone
-## Version: 4.7.45
+## Version: 4.8.47
 ## Author: Gchris
 ## IconTexture: Interface\AddOns\FarmWise\Media\icon.tga
+## AddonCompartmentFunc: FarmWise_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: FarmWise_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: FarmWise_OnAddonCompartmentLeave
 ## SavedVariables: FarmWiseDB, FarmWiseReforgedDB, FarmWiseReforgedSettingsDB
 
 Core/FWR_Defaults.lua

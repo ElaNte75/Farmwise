@@ -27,13 +27,20 @@ local function ensureLauncherDB(self)
     self.Settings = self.Settings or {}
     self.Settings.ui = self.Settings.ui or {}
     if type(self.Settings.ui.launcherMinimap) ~= "table" then
-        self.Settings.ui.launcherMinimap = { hide = false, angle = DEFAULT_ANGLE }
+        self.Settings.ui.launcherMinimap = { hide = true, angle = DEFAULT_ANGLE }
     end
     if self.Settings.ui.launcherMinimap.hide == nil then
-        self.Settings.ui.launcherMinimap.hide = false
+        self.Settings.ui.launcherMinimap.hide = true
     end
     if self.Settings.ui.launcherMinimap.angle == nil then
         self.Settings.ui.launcherMinimap.angle = DEFAULT_ANGLE
+    end
+    -- FarmWise is in the game's addon menu next to the minimap, so the separate minimap
+    -- button starts hidden. Done once, also for players who had it shown; after that the
+    -- Control Panel tick box decides.
+    if not self.Settings.ui.launcherMinimap.menuDefaultApplied then
+        self.Settings.ui.launcherMinimap.menuDefaultApplied = true
+        self.Settings.ui.launcherMinimap.hide = true
     end
     return self.Settings.ui.launcherMinimap
 end
@@ -127,6 +134,19 @@ local function updateAngleFromCursor(self, button)
     refreshLauncherPosition(self)
 end
 
+-- The Control Panel tick box "Show the minimap button".
+function FWR:IsLauncherMinimapShown()
+    return not ensureLauncherDB(self).hide
+end
+
+function FWR:SetLauncherMinimapShown(shown)
+    ensureLauncherDB(self).hide = not shown
+    if self.TouchDatabase then
+        self:TouchDatabase()
+    end
+    self:RefreshLauncherIcon()
+end
+
 function FWR:RefreshLauncherIcon()
     local button = self.LauncherIcon
     if not button then
@@ -183,15 +203,7 @@ function FWR:CreateLauncherIcon()
     button.highlight = button:GetHighlightTexture()
 
     button:SetScript("OnClick", function(_, mouseButton)
-        if mouseButton == "LeftButton" then
-            if FWR and FWR.ToggleMainFrameVisibleState then
-                FWR:ToggleMainFrameVisibleState()
-            end
-        elseif mouseButton == "RightButton" then
-            if FWR and FWR.OpenControlPanelWindow then
-                FWR:OpenControlPanelWindow()
-            end
-        end
+        FWR:LauncherClick(mouseButton)
     end)
 
     button:SetScript("OnDragStart", function(selfButton)
@@ -213,10 +225,7 @@ function FWR:CreateLauncherIcon()
             return
         end
         GameTooltip:SetOwner(selfButton, "ANCHOR_LEFT")
-        GameTooltip:SetText("FarmWise Reforged v" .. tostring(FWR.VERSION or "") .. (FWR.RELEASE_STAGE and (" " .. FWR.RELEASE_STAGE) or ""), 1, 0.82, 0)
-        GameTooltip:AddLine("Left Click: Show / Hide Main Frame", 0.9, 0.9, 0.9)
-        GameTooltip:AddLine("Right Click: Open Control Panel", 0.9, 0.9, 0.9)
-        GameTooltip:AddLine("Drag: Move around Minimap", 0.7, 0.7, 0.7)
+        FWR:FillLauncherTooltip(GameTooltip, true)
         GameTooltip:Show()
     end)
 
@@ -229,4 +238,36 @@ function FWR:CreateLauncherIcon()
     self.LauncherIcon = button
     self:RefreshLauncherIcon()
     return button
+end
+
+-- Shared by the minimap button and the game's addon menu (minimap addon list).
+function FWR:LauncherClick(mouseButton)
+    if mouseButton == "RightButton" then
+        if self.OpenControlPanelWindow then self:OpenControlPanelWindow() end
+    elseif self.ToggleMainFrameVisibleState then
+        self:ToggleMainFrameVisibleState()
+    end
+end
+
+function FWR:FillLauncherTooltip(tooltip, withDrag)
+    tooltip:SetText("FarmWise Reforged v" .. tostring(self.VERSION or "") .. (self.RELEASE_STAGE and (" " .. self.RELEASE_STAGE) or ""), 1, 0.82, 0)
+    tooltip:AddLine("Left Click: Show / Hide Main Frame", 0.9, 0.9, 0.9)
+    tooltip:AddLine("Right Click: Open Control Panel", 0.9, 0.9, 0.9)
+    if withDrag then tooltip:AddLine("Drag: Move around Minimap", 0.7, 0.7, 0.7) end
+end
+
+-- Game addon menu entry (the TOC files name these three global functions).
+function FarmWise_OnAddonCompartmentClick(_, mouseButton)
+    FWR:LauncherClick(mouseButton)
+end
+
+function FarmWise_OnAddonCompartmentEnter(_, menuButton)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(menuButton or UIParent, "ANCHOR_LEFT")
+    FWR:FillLauncherTooltip(GameTooltip, false)
+    GameTooltip:Show()
+end
+
+function FarmWise_OnAddonCompartmentLeave()
+    if GameTooltip then GameTooltip:Hide() end
 end
